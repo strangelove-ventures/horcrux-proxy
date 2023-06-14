@@ -5,6 +5,7 @@ go 1.20
 require (
 	github.com/cometbft/cometbft v0.37.1
 	github.com/cosmos/gogoproto v1.4.1
+	github.com/fsnotify/fsnotify v1.5.4
 	github.com/mitchellh/go-homedir v1.1.0
 	github.com/spf13/cobra v1.6.1
 	github.com/spf13/viper v1.13.0
@@ -14,7 +15,6 @@ require (
 require (
 	github.com/btcsuite/btcd/btcec/v2 v2.2.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.0.1 // indirect
-	github.com/fsnotify/fsnotify v1.5.4 // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.5.1 // indirect
 	github.com/golang/protobuf v1.5.2 // indirect

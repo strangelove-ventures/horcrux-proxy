@@ -5,15 +5,21 @@ import (
 	"os"
 	"path/filepath"
 
+	cometlog "github.com/cometbft/cometbft/libs/log"
 	homedir "github.com/mitchellh/go-homedir"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/strangelove-ventures/horcrux-proxy/config"
+	"github.com/strangelove-ventures/horcrux-proxy/privval"
+	"github.com/strangelove-ventures/horcrux-proxy/signer"
 	"gopkg.in/yaml.v2"
 )
 
 type appState struct {
-	config config.RuntimeConfig
+	config   config.RuntimeConfig
+	logger   cometlog.Logger
+	listener *privval.SignerListenerEndpoint
+	sentries map[string]*signer.ReconnRemoteSigner
 }
 
 func rootCmd(a *appState) *cobra.Command {

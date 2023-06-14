@@ -77,6 +77,9 @@ func (rs *ReconnRemoteSigner) loop() {
 		}
 
 		for conn == nil {
+			if !rs.IsRunning() {
+				return
+			}
 			proto, address := cometnet.ProtocolAndAddress(rs.address)
 			netConn, err := rs.dialer.Dial(proto, address)
 			if err != nil {
@@ -89,6 +92,9 @@ func (rs *ReconnRemoteSigner) loop() {
 			rs.Logger.Info("Connected to Sentry", "address", rs.address)
 			conn, err = cometp2pconn.MakeSecretConnection(netConn, rs.privKey)
 			if err != nil {
+				if err := netConn.Close(); err != nil {
+					rs.Logger.Error("Error closing netConn", "err", err)
+				}
 				conn = nil
 				rs.Logger.Error("Secret Conn", "err", err)
 				rs.Logger.Info("Retrying", "sleep (s)", 3, "address", rs.address)
@@ -200,33 +206,6 @@ func getRemoteSignerError(err error) *cometprotoprivval.RemoteSignerError {
 		Code:        0,
 		Description: err.Error(),
 	}
-}
-
-func StartRemoteSigners(
-	logger cometlog.Logger,
-	sl *privval.SignerListenerEndpoint,
-	nodes []string,
-) ([]cometservice.Service, error) {
-	var err error
-	services := make([]cometservice.Service, len(nodes)+1)
-
-	services[0] = sl
-
-	for i, node := range nodes {
-		// CometBFT requires a connection within 3 seconds of start or crashes
-		// A long timeout such as 30 seconds would cause the sentry to fail in loops
-		// Use a short timeout and dial often to connect within 3 second window
-		dialer := net.Dialer{Timeout: 2 * time.Second}
-		s := NewReconnRemoteSigner(node, logger, sl, dialer)
-
-		err = s.Start()
-		if err != nil {
-			return nil, err
-		}
-
-		services[i+1] = s
-	}
-	return services, err
 }
 
 // ReadMsg reads a message from an io.Reader

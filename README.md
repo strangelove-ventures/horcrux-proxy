@@ -1,6 +1,10 @@
 # Horcrux Proxy
 
-horcrux-proxy is a proxy between a horcrux cosigner and one-to-many sentry nodes. This allows the Horcrux cosigner to be kept behind a private network connection so that the only outbound connections are to the other cosigners and the proxy. This allows maintaining the configuration for the list of sentries that horcrux should connect to outside of the private horcrux process. As a benefit, the Horcrux Cosigner does not need to be restarted when adding new sentries for connection.
+horcrux-proxy is a proxy between a horcrux cosigner and one-to-many sentry nodes. This allows the Horcrux cosigner to be kept behind a private network connection so that the only outbound connections are to the other cosigners and the proxy. 
+
+This allows maintaining the configuration for the list of sentries that horcrux should connect to outside of the private horcrux process. As a benefit, the Horcrux Cosigner does not need to be restarted when adding new sentries for connection.
+
+Additionally, horcrux-proxy will watch the config file for added and removed sentries so that the proxy does not need to be restarted either for changes in configuration.
 
 ## Diagram
 

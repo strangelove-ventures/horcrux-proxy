@@ -3,12 +3,12 @@ package cmd
 import (
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cometlog "github.com/cometbft/cometbft/libs/log"
 	cometnet "github.com/cometbft/cometbft/libs/net"
 	cometos "github.com/cometbft/cometbft/libs/os"
-	"github.com/cometbft/cometbft/libs/service"
 	"github.com/spf13/cobra"
 
 	"github.com/strangelove-ventures/horcrux-proxy/privval"
@@ -22,23 +22,38 @@ func startCmd(a *appState) *cobra.Command {
 		Args:         cobra.NoArgs,
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
-
 			out := cmd.OutOrStdout()
 
-			logger := cometlog.NewTMLogger(cometlog.NewSyncWriter(out)).With("module", "validator")
+			a.logger = cometlog.NewTMLogger(cometlog.NewSyncWriter(out)).With("module", "validator")
 
-			logger.Info(
+			a.logger.Info(
 				"Horcrux Proxy",
 			)
 
-			listener := newSignerListenerEndpoint(logger, a.config.Config.ListenAddr)
+			a.listener = newSignerListenerEndpoint(a.logger, a.config.Config.ListenAddr)
 
-			services, err := signer.StartRemoteSigners(logger, listener, a.config.Config.Nodes())
-			if err != nil {
-				return fmt.Errorf("failed to start remote signer(s): %w", err)
+			if err := a.listener.Start(); err != nil {
+				return fmt.Errorf("failed to start listener: %w", err)
 			}
 
-			waitAndTerminate(logger, services)
+			a.sentries = make(map[string]*signer.ReconnRemoteSigner)
+
+			for _, node := range a.config.Config.ChainNodes {
+				// CometBFT requires a connection within 3 seconds of start or crashes
+				// A long timeout such as 30 seconds would cause the sentry to fail in loops
+				// Use a short timeout and dial often to connect within 3 second window
+				dialer := net.Dialer{Timeout: 2 * time.Second}
+				s := signer.NewReconnRemoteSigner(node.PrivValAddr, a.logger, a.listener, dialer)
+
+				if err := s.Start(); err != nil {
+					return fmt.Errorf("failed to start remote signer(s): %w", err)
+				}
+				a.sentries[node.PrivValAddr] = s
+			}
+
+			go watchForConfigFileUpdates(cmd.Context(), a)
+
+			waitAndTerminate(a)
 
 			return nil
 		},
@@ -72,15 +87,17 @@ func newSignerListenerEndpoint(logger cometlog.Logger, addr string) *privval.Sig
 	)
 }
 
-func waitAndTerminate(logger cometlog.Logger, services []service.Service) {
+func waitAndTerminate(a *appState) {
 	done := make(chan struct{})
-
-	cometos.TrapSignal(logger, func() {
-		for _, service := range services {
-			err := service.Stop()
+	cometos.TrapSignal(a.logger, func() {
+		for _, s := range a.sentries {
+			err := s.Stop()
 			if err != nil {
 				panic(err)
 			}
+		}
+		if err := a.listener.Stop(); err != nil {
+			panic(err)
 		}
 		close(done)
 	})
