@@ -9,7 +9,7 @@ ADD . .
 RUN CGO_ENABLED=1 LDFLAGS='-linkmode external -extldflags "-static"' make install
 
 # Use minimal busybox from infra-toolkit image for final scratch image
-FROM ghcr.io/strangelove-ventures/infra-toolkit:v0.0.7 AS busybox-min
+FROM ghcr.io/strangelove-ventures/infra-toolkit:v0.0.8 AS busybox-min
 RUN addgroup --gid 1000 -S strangelove && adduser --uid 100 -S strangelove -G strangelove
 
 # Use ln and rm from full featured busybox for assembling final image
@@ -41,6 +41,10 @@ RUN for b in \
   less \
   ls \
   md5sum \
+  nc \
+  nslookup \
+  ping \
+  ping6 \
   pwd \
   sha1sum \
   sha256sum \
