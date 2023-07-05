@@ -3,7 +3,7 @@ module github.com/strangelove-ventures/horcrux-proxy
 go 1.20
 
 require (
-	github.com/cometbft/cometbft v0.37.1
+	github.com/cometbft/cometbft v0.37.2
 	github.com/cosmos/gogoproto v1.4.1
 	github.com/fsnotify/fsnotify v1.5.4
 	github.com/mitchellh/go-homedir v1.1.0
