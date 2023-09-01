@@ -43,7 +43,9 @@ func startCmd(a *appState) *cobra.Command {
 
 			a.sentries = make(map[string]*signer.ReconnRemoteSigner)
 
-			go watchForNewSentries(cmd.Context(), a, all)
+			if err := watchForChangedSentries(cmd.Context(), a, all); err != nil {
+				return err
+			}
 
 			waitAndTerminate(a)
 

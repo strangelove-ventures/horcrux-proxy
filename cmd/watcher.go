@@ -15,7 +15,7 @@ import (
 	"k8s.io/client-go/rest"
 )
 
-func watchForNewSentries(
+func watchForChangedSentries(
 	ctx context.Context,
 	a *appState,
 	all bool, // should we connect to sentries on all nodes, or just this node?
