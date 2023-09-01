@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"net"
-	"time"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
 	cometlog "github.com/cometbft/cometbft/libs/log"
@@ -13,6 +12,11 @@ import (
 
 	"github.com/strangelove-ventures/horcrux-proxy/privval"
 	"github.com/strangelove-ventures/horcrux-proxy/signer"
+)
+
+const (
+	flagListen = "listen"
+	flagAll    = "all"
 )
 
 func startCmd(a *appState) *cobra.Command {
@@ -26,11 +30,12 @@ func startCmd(a *appState) *cobra.Command {
 
 			a.logger = cometlog.NewTMLogger(cometlog.NewSyncWriter(out)).With("module", "validator")
 
-			a.logger.Info(
-				"Horcrux Proxy",
-			)
+			a.logger.Info("Horcrux Proxy")
 
-			a.listener = newSignerListenerEndpoint(a.logger, a.config.Config.ListenAddr)
+			addr, _ := cmd.Flags().GetString(flagListen)
+			all, _ := cmd.Flags().GetBool(flagAll)
+
+			a.listener = newSignerListenerEndpoint(a.logger, addr)
 
 			if err := a.listener.Start(); err != nil {
 				return fmt.Errorf("failed to start listener: %w", err)
@@ -38,26 +43,16 @@ func startCmd(a *appState) *cobra.Command {
 
 			a.sentries = make(map[string]*signer.ReconnRemoteSigner)
 
-			for _, node := range a.config.Config.ChainNodes {
-				// CometBFT requires a connection within 3 seconds of start or crashes
-				// A long timeout such as 30 seconds would cause the sentry to fail in loops
-				// Use a short timeout and dial often to connect within 3 second window
-				dialer := net.Dialer{Timeout: 2 * time.Second}
-				s := signer.NewReconnRemoteSigner(node.PrivValAddr, a.logger, a.listener, dialer)
-
-				if err := s.Start(); err != nil {
-					return fmt.Errorf("failed to start remote signer(s): %w", err)
-				}
-				a.sentries[node.PrivValAddr] = s
-			}
-
-			go watchForConfigFileUpdates(cmd.Context(), a)
+			go watchForNewSentries(cmd.Context(), a, all)
 
 			waitAndTerminate(a)
 
 			return nil
 		},
 	}
+
+	cmd.Flags().StringP(flagListen, "l", "tcp://0.0.0.0:1234", "Privval listen address for the proxy")
+	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 
 	return cmd
 }
