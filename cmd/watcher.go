@@ -15,6 +15,11 @@ import (
 	"k8s.io/client-go/rest"
 )
 
+const (
+	namespaceFile     = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+	labelCosmosSentry = "app.kubernetes.io/component=cosmos-sentry"
+)
+
 func watchForChangedSentries(
 	ctx context.Context,
 	a *appState,
@@ -34,7 +39,7 @@ func watchForChangedSentries(
 	if !all {
 		// need to determine which node this pod is on so we can only connect to sentries on this node
 
-		nsbz, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
+		nsbz, err := os.ReadFile(namespaceFile)
 		if err != nil {
 			return fmt.Errorf("failed to read namespace from service account: %w", err)
 		}
@@ -75,7 +80,7 @@ func reconcileSentries(
 	all bool, // should we connect to sentries on all nodes, or just this node?
 ) error {
 	ns, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
-		LabelSelector: "app.kubernetes.io/component=cosmos-sentry",
+		LabelSelector: labelCosmosSentry,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to list namespaces: %w", err)
@@ -85,7 +90,7 @@ func reconcileSentries(
 
 	for _, n := range ns.Items {
 		services, err := clientset.CoreV1().Services(n.Name).List(ctx, metav1.ListOptions{
-			LabelSelector: "app.kubernetes.io/component=cosmos-sentry",
+			LabelSelector: labelCosmosSentry,
 		})
 
 		if err != nil {

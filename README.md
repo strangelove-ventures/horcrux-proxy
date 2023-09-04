@@ -2,9 +2,9 @@
 
 horcrux-proxy is a proxy between a horcrux cosigner and one-to-many sentry nodes. This allows the Horcrux cosigner to be kept behind a private network connection so that the only outbound connections are to the other cosigners and the proxy. 
 
-This allows maintaining the configuration for the list of sentries that horcrux should connect to outside of the private horcrux process. As a benefit, the Horcrux Cosigner does not need to be restarted when adding new sentries for connection.
+This allows maintaining the configuration for the list of sentries that horcrux should connect to outside of the private horcrux process. As a benefit, the Horcrux Cosigner does not need to be restarted when new sentries are created.
 
-Additionally, horcrux-proxy will watch the config file for added and removed sentries so that the proxy does not need to be restarted either for changes in configuration.
+Additionally, horcrux-proxy will watch the kubernetes cluster for [cosmos-operator](https://github.com/strangelove-ventures/cosmos-operator) sentries so that the proxy does not need to be restarted when sentries are added or removed.
 
 ## Diagram
 
@@ -34,24 +34,13 @@ Additionally, horcrux-proxy will watch the config file for added and removed sen
 
 ## Quick Start
 
-Run the following command to generate the config file:
-
-```bash
-horcrux-proxy config init --address tcp://0.0.0.0:1234 --node tcp://10.0.0.10:1234 --node tcp://10.0.0.11:1234 --node tcp://10.0.0.12:1234
-```
-
-The following config is generated at `~/.horcrux-proxy/config.yaml`:
-
-```yaml
-listenAddr: tcp://0.0.0.0:1234
-chainNodes:
-- privValAddr: tcp://10.0.0.10:1234
-- privValAddr: tcp://10.0.0.11:1234
-- privValAddr: tcp://10.0.0.12:1234
-```
-
 Start horcrux-proxy
 
 ```bash
 horcrux-proxy start
 ```
+
+### Flags
+
+- `-l`/`--listen-addr` - modify listen address (default `tcp://0.0.0.0:1234`)
+- `-a`/`-all` - connect to all sentries regardless of node, instead of only sentries on this node
