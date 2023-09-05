@@ -56,6 +56,7 @@ func watchForChangedSentries(
 	t := time.NewTimer(30 * time.Second)
 
 	go func() {
+		defer t.Stop()
 		for {
 			if err := reconcileSentries(ctx, a, thisNode, clientset, all); err != nil {
 				a.logger.Error("Failed to reconcile sentries with kube api", "error", err)
@@ -79,47 +80,38 @@ func reconcileSentries(
 	clientset *kubernetes.Clientset,
 	all bool, // should we connect to sentries on all nodes, or just this node?
 ) error {
-	ns, err := clientset.CoreV1().Namespaces().List(ctx, metav1.ListOptions{
-		LabelSelector: labelCosmosSentry,
-	})
-	if err != nil {
-		return fmt.Errorf("failed to list namespaces: %w", err)
-	}
-
 	configNodes := make([]string, 0)
 
-	for _, n := range ns.Items {
-		services, err := clientset.CoreV1().Services(n.Name).List(ctx, metav1.ListOptions{
-			LabelSelector: labelCosmosSentry,
-		})
+	services, err := clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{
+		LabelSelector: labelCosmosSentry,
+	})
 
+	if err != nil {
+		return fmt.Errorf("failed to list services: %w", err)
+	}
+
+	for _, s := range services.Items {
+		if len(s.Spec.Ports) != 1 || s.Spec.Ports[0].Name != "sentry-privval" {
+			continue
+		}
+
+		set := labels.Set(s.Spec.Selector)
+
+		pods, err := clientset.CoreV1().Pods(s.Namespace).List(ctx, metav1.ListOptions{LabelSelector: set.AsSelector().String()})
 		if err != nil {
-			return fmt.Errorf("failed to list services in namespace %s: %w", n.Name, err)
+			return fmt.Errorf("failed to list pods in namespace %s for service %s: %w", s.Namespace, s.Name, err)
 		}
 
-		for _, s := range services.Items {
-			if len(s.Spec.Ports) != 1 || s.Spec.Ports[0].Name != "sentry-privval" {
-				continue
-			}
-
-			set := labels.Set(s.Spec.Selector)
-
-			pods, err := clientset.CoreV1().Pods(n.Name).List(ctx, metav1.ListOptions{LabelSelector: set.AsSelector().String()})
-			if err != nil {
-				return fmt.Errorf("failed to list pods in namespace for service %s: %w", n.Name, err)
-			}
-
-			if len(pods.Items) != 1 {
-				continue
-			}
-
-			if !all && pods.Items[0].Spec.NodeName != thisNode {
-				continue
-			}
-
-			// Connect to this service
-			configNodes = append(configNodes, fmt.Sprintf("tcp://%s.%s:%d", s.Name, n.Name, s.Spec.Ports[0].Port))
+		if len(pods.Items) != 1 {
+			continue
 		}
+
+		if !all && pods.Items[0].Spec.NodeName != thisNode {
+			continue
+		}
+
+		// Connect to this service
+		configNodes = append(configNodes, fmt.Sprintf("tcp://%s.%s:%d", s.Name, s.Namespace, s.Spec.Ports[0].Port))
 	}
 
 	newSentries := make([]string, 0)
