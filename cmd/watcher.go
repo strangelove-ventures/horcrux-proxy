@@ -5,74 +5,116 @@ import (
 	"fmt"
 	"net"
 	"os"
-	"sync"
 	"time"
 
-	"github.com/fsnotify/fsnotify"
-	"gopkg.in/yaml.v2"
-
-	"github.com/strangelove-ventures/horcrux-proxy/config"
 	"github.com/strangelove-ventures/horcrux-proxy/signer"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 )
 
-func watchForConfigFileUpdates(
+const (
+	namespaceFile     = "/var/run/secrets/kubernetes.io/serviceaccount/namespace"
+	labelCosmosSentry = "app.kubernetes.io/component=cosmos-sentry"
+)
+
+func watchForChangedSentries(
 	ctx context.Context,
 	a *appState,
-) {
-	watcher, err := fsnotify.NewWatcher()
+	all bool, // should we connect to sentries on all nodes, or just this node?
+) error {
+	config, err := rest.InClusterConfig()
 	if err != nil {
-		panic(fmt.Errorf("watcher setup failed: %w", err))
+		return fmt.Errorf("failed to get in cluster config: %w", err)
 	}
-	defer watcher.Close()
+	// creates the clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("failed to create kube clientset: %w", err)
+	}
 
-	done := make(chan bool)
+	thisNode := ""
+	if !all {
+		// need to determine which node this pod is on so we can only connect to sentries on this node
+
+		nsbz, err := os.ReadFile(namespaceFile)
+		if err != nil {
+			return fmt.Errorf("failed to read namespace from service account: %w", err)
+		}
+		ns := string(nsbz)
+
+		thisPod, err := clientset.CoreV1().Pods(ns).Get(ctx, os.Getenv("HOSTNAME"), metav1.GetOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to get this pod: %w", err)
+		}
+
+		thisNode = thisPod.Spec.NodeName
+	}
+
+	t := time.NewTimer(30 * time.Second)
+
 	go func() {
-		defer close(done)
-
-		var mu sync.Mutex
-
+		defer t.Stop()
 		for {
+			if err := reconcileSentries(ctx, a, thisNode, clientset, all); err != nil {
+				a.logger.Error("Failed to reconcile sentries with kube api", "error", err)
+			}
 			select {
-			case _, ok := <-watcher.Events:
-				if !ok {
-					return
-				}
-				mu.Lock()
-				if err := configUpdate(a); err != nil {
-					a.logger.Error("Error during config reconcile", "err", err)
-				}
-				mu.Unlock()
-			case err, ok := <-watcher.Errors:
-				if !ok {
-					return
-				}
-				a.logger.Error("Watcher error", "err", err)
+			case <-ctx.Done():
+				return
+			case <-t.C:
+				t.Reset(30 * time.Second)
 			}
 		}
 	}()
 
-	if err := watcher.Add(a.config.ConfigFile); err != nil {
-		panic(fmt.Errorf("add watcher failed: %w", err))
-	}
-	<-done
+	return nil
 }
 
-func configUpdate(
+func reconcileSentries(
+	ctx context.Context,
 	a *appState,
+	thisNode string,
+	clientset *kubernetes.Clientset,
+	all bool, // should we connect to sentries on all nodes, or just this node?
 ) error {
-	bz, err := os.ReadFile(a.config.ConfigFile)
+	configNodes := make([]string, 0)
+
+	services, err := clientset.CoreV1().Services("").List(ctx, metav1.ListOptions{
+		LabelSelector: labelCosmosSentry,
+	})
+
 	if err != nil {
-		return fmt.Errorf("error reading config file: %v", err)
+		return fmt.Errorf("failed to list services: %w", err)
 	}
-	var config config.Config
-	if err := yaml.Unmarshal(bz, &config); err != nil {
-		return fmt.Errorf("error unmarshalling config file: %w", err)
+
+	for _, s := range services.Items {
+		if len(s.Spec.Ports) != 1 || s.Spec.Ports[0].Name != "sentry-privval" {
+			continue
+		}
+
+		set := labels.Set(s.Spec.Selector)
+
+		pods, err := clientset.CoreV1().Pods(s.Namespace).List(ctx, metav1.ListOptions{LabelSelector: set.AsSelector().String()})
+		if err != nil {
+			return fmt.Errorf("failed to list pods in namespace %s for service %s: %w", s.Namespace, s.Name, err)
+		}
+
+		if len(pods.Items) != 1 {
+			continue
+		}
+
+		if !all && pods.Items[0].Spec.NodeName != thisNode {
+			continue
+		}
+
+		// Connect to this service
+		configNodes = append(configNodes, fmt.Sprintf("tcp://%s.%s:%d", s.Name, s.Namespace, s.Spec.Ports[0].Port))
 	}
 
 	newSentries := make([]string, 0)
-	removedSentries := make([]string, 0)
-
-	configNodes := config.Nodes()
 
 	for _, newConfigSentry := range configNodes {
 		foundNewConfigSentry := false
@@ -87,6 +129,8 @@ func configUpdate(
 			newSentries = append(newSentries, newConfigSentry)
 		}
 	}
+
+	removedSentries := make([]string, 0)
 
 	for existingSentry := range a.sentries {
 		foundExistingSentry := false
@@ -118,8 +162,6 @@ func configUpdate(
 		}
 		a.sentries[newSentry] = s
 	}
-
-	a.config.Config = config
 
 	return nil
 }
