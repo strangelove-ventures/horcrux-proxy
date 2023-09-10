@@ -68,9 +68,9 @@ func (l *RemoteSignerLoadBalancer) sendRequestIfFirst(listener SignerListener, r
 	if !first {
 		return
 	}
-	defer r.wg.Done()
-	l.logger.Debug("Sending request to listener", "address", listener.address)
 	res.res, res.err = listener.SendRequestLocked(request)
+	r.wg.Done()
+	l.logger.Debug("Sent request to listener", "address", listener.address)
 }
 
 type racer struct {
