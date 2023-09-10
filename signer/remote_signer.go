@@ -26,7 +26,7 @@ type ReconnRemoteSigner struct {
 	address string
 	privKey cometcryptoed25519.PrivKey
 
-	sl *privval.SignerListenerEndpoint
+	loadBalancer *privval.RemoteSignerLoadBalancer
 
 	dialer net.Dialer
 }
@@ -39,14 +39,14 @@ type ReconnRemoteSigner struct {
 func NewReconnRemoteSigner(
 	address string,
 	logger cometlog.Logger,
-	sl *privval.SignerListenerEndpoint,
+	loadBalancer *privval.RemoteSignerLoadBalancer,
 	dialer net.Dialer,
 ) *ReconnRemoteSigner {
 	rs := &ReconnRemoteSigner{
-		address: address,
-		dialer:  dialer,
-		sl:      sl,
-		privKey: cometcryptoed25519.GenPrivKey(),
+		address:      address,
+		dialer:       dialer,
+		loadBalancer: loadBalancer,
+		privKey:      cometcryptoed25519.GenPrivKey(),
 	}
 
 	rs.BaseService = *cometservice.NewBaseService(logger, "RemoteSigner", rs)
@@ -148,7 +148,7 @@ func (rs *ReconnRemoteSigner) handleRequest(req cometprotoprivval.Message) comet
 }
 
 func (rs *ReconnRemoteSigner) handleSignVoteRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.sl.SendRequest(req)
+	res, err := rs.loadBalancer.SendRequest(req)
 	if err == nil {
 		return *res
 	}
@@ -162,7 +162,7 @@ func (rs *ReconnRemoteSigner) handleSignVoteRequest(req cometprotoprivval.Messag
 }
 
 func (rs *ReconnRemoteSigner) handleSignProposalRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.sl.SendRequest(req)
+	res, err := rs.loadBalancer.SendRequest(req)
 	if err == nil {
 		return *res
 	}
@@ -177,7 +177,7 @@ func (rs *ReconnRemoteSigner) handleSignProposalRequest(req cometprotoprivval.Me
 }
 
 func (rs *ReconnRemoteSigner) handlePubKeyRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.sl.SendRequest(req)
+	res, err := rs.loadBalancer.SendRequest(req)
 	if err == nil {
 		return *res
 	}

@@ -129,6 +129,29 @@ func (sl *SignerListenerEndpoint) SendRequest(request privvalproto.Message) (*pr
 	return &res, nil
 }
 
+// SendRequest ensures there is a connection, sends a request and waits for a response
+func (sl *SignerListenerEndpoint) SendRequestLocked(request privvalproto.Message) (*privvalproto.Message, error) {
+	err := sl.ensureConnection(sl.timeoutAccept)
+	if err != nil {
+		return nil, err
+	}
+
+	err = sl.WriteMessage(request)
+	if err != nil {
+		return nil, err
+	}
+
+	res, err := sl.ReadMessage()
+	if err != nil {
+		return nil, err
+	}
+
+	// Reset pingTimer to avoid sending unnecessary pings.
+	sl.pingTimer.Reset(sl.pingInterval)
+
+	return &res, nil
+}
+
 func (sl *SignerListenerEndpoint) ensureConnection(maxWait time.Duration) error {
 	if sl.IsConnected() {
 		return nil

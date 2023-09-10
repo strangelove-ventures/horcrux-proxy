@@ -32,13 +32,18 @@ func startCmd(a *appState) *cobra.Command {
 
 			a.logger.Info("Horcrux Proxy")
 
-			addr, _ := cmd.Flags().GetString(flagListen)
+			listenAddrs, _ := cmd.Flags().GetStringArray(flagListen)
 			all, _ := cmd.Flags().GetBool(flagAll)
 
-			a.listener = newSignerListenerEndpoint(a.logger, addr)
+			listeners := make([]*privval.SignerListenerEndpoint, len(listenAddrs))
+			for i, addr := range listenAddrs {
+				listeners[i] = newSignerListenerEndpoint(a.logger, addr)
+			}
 
-			if err := a.listener.Start(); err != nil {
-				return fmt.Errorf("failed to start listener: %w", err)
+			a.loadBalancer = privval.NewRemoteSignerLoadBalancer(a.logger, listeners)
+
+			if err := a.loadBalancer.Start(); err != nil {
+				return fmt.Errorf("failed to start listener(s): %w", err)
 			}
 
 			a.sentries = make(map[string]*signer.ReconnRemoteSigner)
@@ -53,7 +58,7 @@ func startCmd(a *appState) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringP(flagListen, "l", "tcp://0.0.0.0:1234", "Privval listen address for the proxy")
+	cmd.Flags().StringArrayP(flagListen, "l", []string{"tcp://0.0.0.0:1234"}, "Privval listen addresses for the proxy")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 
 	return cmd
@@ -93,7 +98,7 @@ func waitAndTerminate(a *appState) {
 				panic(err)
 			}
 		}
-		if err := a.listener.Stop(); err != nil {
+		if err := a.loadBalancer.Stop(); err != nil {
 			panic(err)
 		}
 		close(done)
