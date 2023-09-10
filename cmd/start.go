@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"net"
 
-	"github.com/cometbft/cometbft/crypto/ed25519"
 	cometlog "github.com/cometbft/cometbft/libs/log"
-	cometnet "github.com/cometbft/cometbft/libs/net"
 	cometos "github.com/cometbft/cometbft/libs/os"
 	"github.com/spf13/cobra"
 
@@ -35,9 +32,9 @@ func startCmd(a *appState) *cobra.Command {
 			listenAddrs, _ := cmd.Flags().GetStringArray(flagListen)
 			all, _ := cmd.Flags().GetBool(flagAll)
 
-			listeners := make([]*privval.SignerListenerEndpoint, len(listenAddrs))
+			listeners := make([]privval.SignerListener, len(listenAddrs))
 			for i, addr := range listenAddrs {
-				listeners[i] = newSignerListenerEndpoint(a.logger, addr)
+				listeners[i] = privval.NewSignerListener(a.logger, addr)
 			}
 
 			a.loadBalancer = privval.NewRemoteSignerLoadBalancer(a.logger, listeners)
@@ -62,31 +59,6 @@ func startCmd(a *appState) *cobra.Command {
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 
 	return cmd
-}
-
-func newSignerListenerEndpoint(logger cometlog.Logger, addr string) *privval.SignerListenerEndpoint {
-	proto, address := cometnet.ProtocolAndAddress(addr)
-
-	ln, err := net.Listen(proto, address)
-	logger.Info("SignerListener: Listening", "proto", proto, "address", address)
-	if err != nil {
-		panic(err)
-	}
-
-	var listener net.Listener
-
-	if proto == "unix" {
-		unixLn := privval.NewUnixListener(ln)
-		listener = unixLn
-	} else {
-		tcpLn := privval.NewTCPListener(ln, ed25519.GenPrivKey())
-		listener = tcpLn
-	}
-
-	return privval.NewSignerListenerEndpoint(
-		logger,
-		listener,
-	)
 }
 
 func waitAndTerminate(a *appState) {

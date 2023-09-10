@@ -11,10 +11,10 @@ import (
 // RemoteSignerLoadBalancer load balances incoming requests across multiple listeners.
 type RemoteSignerLoadBalancer struct {
 	logger    cometlog.Logger
-	listeners []*SignerListenerEndpoint
+	listeners []SignerListener
 }
 
-func NewRemoteSignerLoadBalancer(logger cometlog.Logger, listeners []*SignerListenerEndpoint) *RemoteSignerLoadBalancer {
+func NewRemoteSignerLoadBalancer(logger cometlog.Logger, listeners []SignerListener) *RemoteSignerLoadBalancer {
 	return &RemoteSignerLoadBalancer{
 		logger:    logger,
 		listeners: listeners,
@@ -61,7 +61,7 @@ type signerListenerEndpointResponse struct {
 	err error
 }
 
-func (l *RemoteSignerLoadBalancer) sendRequestIfFirst(listener *SignerListenerEndpoint, r *racer, request privvalproto.Message, res *signerListenerEndpointResponse) {
+func (l *RemoteSignerLoadBalancer) sendRequestIfFirst(listener SignerListener, r *racer, request privvalproto.Message, res *signerListenerEndpointResponse) {
 	defer r.wg.Done()
 	listener.instanceMtx.Lock()
 	defer listener.instanceMtx.Unlock()
@@ -69,6 +69,7 @@ func (l *RemoteSignerLoadBalancer) sendRequestIfFirst(listener *SignerListenerEn
 	if !first {
 		return
 	}
+	l.logger.Debug("Sending request to listener", "address", listener.address)
 	res.res, res.err = listener.SendRequestLocked(request)
 }
 
