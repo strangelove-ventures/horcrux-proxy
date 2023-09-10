@@ -26,7 +26,7 @@ func (sl *RemoteSignerLoadBalancer) SendRequest(request privvalproto.Message) (*
 	var r racer
 	var res signerListenerEndpointResponse
 
-	r.wg.Add(len(sl.listeners))
+	r.wg.Add(1)
 
 	for _, listener := range sl.listeners {
 		go sl.sendRequestIfFirst(listener, &r, request, &res)
@@ -62,13 +62,13 @@ type signerListenerEndpointResponse struct {
 }
 
 func (l *RemoteSignerLoadBalancer) sendRequestIfFirst(listener SignerListener, r *racer, request privvalproto.Message, res *signerListenerEndpointResponse) {
-	defer r.wg.Done()
 	listener.instanceMtx.Lock()
 	defer listener.instanceMtx.Unlock()
 	first := r.race()
 	if !first {
 		return
 	}
+	defer r.wg.Done()
 	l.logger.Debug("Sending request to listener", "address", listener.address)
 	res.res, res.err = listener.SendRequestLocked(request)
 }
