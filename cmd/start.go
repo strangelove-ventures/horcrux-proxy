@@ -12,8 +12,9 @@ import (
 )
 
 const (
-	flagListen = "listen"
-	flagAll    = "all"
+	flagLogLevel = "log-level"
+	flagListen   = "listen"
+	flagAll      = "all"
 )
 
 func startCmd(a *appState) *cobra.Command {
@@ -25,7 +26,13 @@ func startCmd(a *appState) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
-			a.logger = cometlog.NewTMLogger(cometlog.NewSyncWriter(out)).With("module", "validator")
+			logLevel, _ := cmd.Flags().GetString(flagLogLevel)
+			logLevelOpt, err := cometlog.AllowLevel(logLevel)
+			if err != nil {
+				return fmt.Errorf("failed to parse log level: %w", err)
+			}
+
+			a.logger = cometlog.NewFilter(cometlog.NewTMLogger(cometlog.NewSyncWriter(out)), logLevelOpt).With("module", "validator")
 
 			a.logger.Info("Horcrux Proxy")
 
@@ -57,6 +64,7 @@ func startCmd(a *appState) *cobra.Command {
 
 	cmd.Flags().StringArrayP(flagListen, "l", []string{"tcp://0.0.0.0:1234"}, "Privval listen addresses for the proxy")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
+	cmd.Flags().String(flagLogLevel, "info", "Set log level (debug, info, error, none)")
 
 	return cmd
 }
