@@ -69,7 +69,6 @@ func (l *RemoteSignerLoadBalancer) sendRequestIfFirst(listener *SignerListenerEn
 	if !first {
 		return
 	}
-	l.logger.Debug("Sending request to listener", "listener", listener)
 	res.res, res.err = listener.SendRequestLocked(request)
 }
 
