@@ -2,7 +2,6 @@ package privval
 
 import (
 	"errors"
-	"sync"
 
 	cometlog "github.com/cometbft/cometbft/libs/log"
 	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
@@ -22,23 +21,21 @@ func NewRemoteSignerLoadBalancer(logger cometlog.Logger, listeners []SignerListe
 }
 
 // SendRequest sends a request to the first available listener.
-func (sl *RemoteSignerLoadBalancer) SendRequest(request privvalproto.Message) (*privvalproto.Message, error) {
-	var r racer
-	var res signerListenerEndpointResponse
+func (lb *RemoteSignerLoadBalancer) SendRequest(request privvalproto.Message) (*privvalproto.Message, error) {
+	reqCh := make(chan privvalproto.Message)
+	resCh := make(chan signerListenerEndpointResponse)
 
-	r.wg.Add(1)
-
-	for _, listener := range sl.listeners {
-		go sl.sendRequestIfFirst(listener, &r, request, &res)
+	for _, listener := range lb.listeners {
+		go lb.sendRequest(listener, reqCh, resCh)
 	}
-
-	r.wg.Wait()
-
+	reqCh <- request
+	res := <-resCh
+	close(reqCh)
 	return res.res, res.err
 }
 
-func (sl *RemoteSignerLoadBalancer) Start() error {
-	for _, listener := range sl.listeners {
+func (lb *RemoteSignerLoadBalancer) Start() error {
+	for _, listener := range lb.listeners {
 		if err := listener.Start(); err != nil {
 			return err
 		}
@@ -46,9 +43,9 @@ func (sl *RemoteSignerLoadBalancer) Start() error {
 	return nil
 }
 
-func (sl *RemoteSignerLoadBalancer) Stop() error {
+func (lb *RemoteSignerLoadBalancer) Stop() error {
 	var errs []error
-	for _, listener := range sl.listeners {
+	for _, listener := range lb.listeners {
 		if err := listener.Stop(); err != nil {
 			errs = append(errs, err)
 		}
@@ -61,31 +58,11 @@ type signerListenerEndpointResponse struct {
 	err error
 }
 
-func (l *RemoteSignerLoadBalancer) sendRequestIfFirst(listener SignerListener, r *racer, request privvalproto.Message, res *signerListenerEndpointResponse) {
-	listener.instanceMtx.Lock()
-	defer listener.instanceMtx.Unlock()
-	first := r.race()
-	if !first {
-		return
+func (lb *RemoteSignerLoadBalancer) sendRequest(listener SignerListener, reqCh <-chan privvalproto.Message, resCh chan<- signerListenerEndpointResponse) {
+	for req := range reqCh {
+		var res signerListenerEndpointResponse
+		lb.logger.Debug("Sent request to listener", "address", listener.address)
+		res.res, res.err = listener.SendRequestLocked(req)
+		resCh <- res
 	}
-	res.res, res.err = listener.SendRequestLocked(request)
-	r.wg.Done()
-	l.logger.Debug("Sent request to listener", "address", listener.address)
-}
-
-type racer struct {
-	mu      sync.Mutex
-	wg      sync.WaitGroup
-	handled bool
-}
-
-// returns true if first
-func (r *racer) race() bool {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.handled {
-		return false
-	}
-	r.handled = true
-	return true
 }
