@@ -23,9 +23,6 @@ func TestLoadBalancer(t *testing.T) {
 		"tcp://127.0.0.1:37324",
 	}
 
-	//// get open port
-	//l, err := net.Listen("tcp", ":0")
-
 	logger := log.NewTMJSONLogger(io.Discard)
 
 	listeners := make([]privval.SignerListener, len(listenAddrs))
@@ -35,13 +32,11 @@ func TestLoadBalancer(t *testing.T) {
 
 	lb := privval.NewRemoteSignerLoadBalancer(logger, listeners)
 
-	err := lb.Start()
-
 	t.Cleanup(func() {
 		_ = lb.Stop()
 	})
 
-	require.NoError(t, err)
+	require.NoError(t, lb.Start())
 
 	remoteSigners := make([]*MockRemoteSigner, len(listenAddrs))
 
@@ -68,8 +63,7 @@ func TestLoadBalancer(t *testing.T) {
 		})
 	}
 
-	err = eg.Wait()
-	require.NoError(t, err)
+	require.NoError(t, eg.Wait())
 
 	total := 0
 	for i := range listenAddrs {
