@@ -26,7 +26,7 @@ func (lb *RemoteSignerLoadBalancer) SendRequest(request privvalproto.Message) (*
 	resCh := make(chan signerListenerEndpointResponse)
 
 	for _, listener := range lb.listeners {
-		go lb.sendRequest(listener, reqCh, resCh)
+		go lb.send(listener, reqCh, resCh)
 	}
 	reqCh <- request
 	res := <-resCh
@@ -44,13 +44,11 @@ func (lb *RemoteSignerLoadBalancer) Start() error {
 }
 
 func (lb *RemoteSignerLoadBalancer) Stop() error {
-	var errs []error
+	var err error
 	for _, listener := range lb.listeners {
-		if err := listener.Stop(); err != nil {
-			errs = append(errs, err)
-		}
+		err = errors.Join(err, listener.Stop())
 	}
-	return errors.Join(errs...)
+	return err
 }
 
 type signerListenerEndpointResponse struct {
@@ -58,11 +56,11 @@ type signerListenerEndpointResponse struct {
 	err error
 }
 
-func (lb *RemoteSignerLoadBalancer) sendRequest(listener SignerListener, reqCh <-chan privvalproto.Message, resCh chan<- signerListenerEndpointResponse) {
+func (lb *RemoteSignerLoadBalancer) send(listener SignerListener, reqCh <-chan privvalproto.Message, resCh chan<- signerListenerEndpointResponse) {
 	for req := range reqCh {
 		var res signerListenerEndpointResponse
 		lb.logger.Debug("Sent request to listener", "address", listener.address)
-		res.res, res.err = listener.SendRequestLocked(req)
+		res.res, res.err = listener.SendRequest(req)
 		resCh <- res
 	}
 }
