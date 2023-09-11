@@ -1,6 +1,7 @@
 package privval_test
 
 import (
+	"io"
 	"net"
 	"testing"
 	"time"
@@ -14,12 +15,6 @@ import (
 	"github.com/strangelove-ventures/horcrux-proxy/privval"
 )
 
-type devNull struct{}
-
-func (devNull) Write(p []byte) (int, error) {
-	return len(p), nil
-}
-
 func TestLoadBalancer(t *testing.T) {
 	var listenAddrs = []string{
 		"tcp://127.0.0.1:37321",
@@ -28,7 +23,7 @@ func TestLoadBalancer(t *testing.T) {
 		"tcp://127.0.0.1:37324",
 	}
 
-	logger := log.NewTMJSONLogger(devNull{})
+	logger := log.NewTMJSONLogger(io.Discard)
 
 	listeners := make([]privval.SignerListener, len(listenAddrs))
 	for i, addr := range listenAddrs {
@@ -37,13 +32,11 @@ func TestLoadBalancer(t *testing.T) {
 
 	lb := privval.NewRemoteSignerLoadBalancer(logger, listeners)
 
-	err := lb.Start()
-
 	t.Cleanup(func() {
 		_ = lb.Stop()
 	})
 
-	require.NoError(t, err)
+	require.NoError(t, lb.Start())
 
 	remoteSigners := make([]*MockRemoteSigner, len(listenAddrs))
 
@@ -70,8 +63,7 @@ func TestLoadBalancer(t *testing.T) {
 		})
 	}
 
-	err = eg.Wait()
-	require.NoError(t, err)
+	require.NoError(t, eg.Wait())
 
 	total := 0
 	for i := range listenAddrs {

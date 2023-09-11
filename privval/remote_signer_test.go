@@ -31,8 +31,8 @@ type MockRemoteSigner struct {
 	dialer net.Dialer
 }
 
-func (m *MockRemoteSigner) Counter() Counter {
-	return m.counter.Copy()
+func (rs *MockRemoteSigner) Counter() Counter {
+	return rs.counter.Copy()
 }
 
 // NewMockRemoteSigner return a MockRemoteSigner that will dial using the given
