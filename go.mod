@@ -6,6 +6,8 @@ require (
 	github.com/cometbft/cometbft v0.37.2
 	github.com/cosmos/gogoproto v1.4.1
 	github.com/spf13/cobra v1.6.1
+	github.com/stretchr/testify v1.8.2
+	golang.org/x/sync v0.0.0-20220819030929-7fc1605a5dde
 	k8s.io/apimachinery v0.28.1
 	k8s.io/client-go v0.28.1
 )
@@ -39,6 +41,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/petermattis/goid v0.0.0-20180202154549-b0b1615b78e5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
+	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	golang.org/x/crypto v0.11.0 // indirect
