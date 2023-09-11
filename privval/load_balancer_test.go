@@ -59,7 +59,7 @@ func TestLoadBalancer(t *testing.T) {
 
 	var eg errgroup.Group
 
-	for i := 0; i < 100; i++ {
+	for i := 0; i < 10000; i++ {
 		eg.Go(func() error {
 			_, err := lb.SendRequest(cometprotoprivval.Message{
 				Sum: &cometprotoprivval.Message_SignVoteRequest{SignVoteRequest: &cometprotoprivval.SignVoteRequest{
@@ -81,5 +81,5 @@ func TestLoadBalancer(t *testing.T) {
 		total += c.SignVoteRequests
 	}
 
-	require.Equal(t, 100, total)
+	require.Equal(t, 10000, total)
 }
