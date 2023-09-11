@@ -10,9 +10,9 @@ import (
 )
 
 type appState struct {
-	logger   cometlog.Logger
-	listener *privval.SignerListenerEndpoint
-	sentries map[string]*signer.ReconnRemoteSigner
+	logger       cometlog.Logger
+	loadBalancer *privval.RemoteSignerLoadBalancer
+	sentries     map[string]*signer.ReconnRemoteSigner
 }
 
 func rootCmd(a *appState) *cobra.Command {

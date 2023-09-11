@@ -155,7 +155,7 @@ func reconcileSentries(
 
 	for _, newSentry := range newSentries {
 		dialer := net.Dialer{Timeout: 2 * time.Second}
-		s := signer.NewReconnRemoteSigner(newSentry, a.logger, a.listener, dialer)
+		s := signer.NewReconnRemoteSigner(newSentry, a.logger, a.loadBalancer, dialer)
 
 		if err := s.Start(); err != nil {
 			return fmt.Errorf("failed to start new remote signer(s): %w", err)

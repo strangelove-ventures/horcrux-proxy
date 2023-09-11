@@ -1,9 +1,10 @@
-package signer
+package privval_test
 
 import (
 	"fmt"
 	"io"
 	"net"
+	"sync"
 	"time"
 
 	cometcryptoed25519 "github.com/cometbft/cometbft/crypto/ed25519"
@@ -15,38 +16,39 @@ import (
 	cometprotocrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
 	cometproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/strangelove-ventures/horcrux-proxy/privval"
 )
 
-// ReconnRemoteSigner dials using its dialer and responds to any
+// MockRemoteSigner dials using its dialer and responds to any
 // signature requests using its privVal.
-type ReconnRemoteSigner struct {
+type MockRemoteSigner struct {
 	cometservice.BaseService
 
 	address string
 	privKey cometcryptoed25519.PrivKey
 
-	loadBalancer *privval.RemoteSignerLoadBalancer
+	counter Counter
 
 	dialer net.Dialer
 }
 
-// NewReconnRemoteSigner return a ReconnRemoteSigner that will dial using the given
+func (m *MockRemoteSigner) Counter() Counter {
+	return m.counter.Copy()
+}
+
+// NewMockRemoteSigner return a MockRemoteSigner that will dial using the given
 // dialer and respond to any signature requests over the connection
 // using the given privVal.
 //
-// If the connection is broken, the ReconnRemoteSigner will attempt to reconnect.
-func NewReconnRemoteSigner(
+// If the connection is broken, the MockRemoteSigner will attempt to reconnect.
+func NewMockRemoteSigner(
 	address string,
 	logger cometlog.Logger,
-	loadBalancer *privval.RemoteSignerLoadBalancer,
 	dialer net.Dialer,
-) *ReconnRemoteSigner {
-	rs := &ReconnRemoteSigner{
-		address:      address,
-		dialer:       dialer,
-		loadBalancer: loadBalancer,
-		privKey:      cometcryptoed25519.GenPrivKey(),
+) *MockRemoteSigner {
+	rs := &MockRemoteSigner{
+		address: address,
+		dialer:  dialer,
+		privKey: cometcryptoed25519.GenPrivKey(),
 	}
 
 	rs.BaseService = *cometservice.NewBaseService(logger, "RemoteSigner", rs)
@@ -54,17 +56,17 @@ func NewReconnRemoteSigner(
 }
 
 // OnStart implements cmn.Service.
-func (rs *ReconnRemoteSigner) OnStart() error {
+func (rs *MockRemoteSigner) OnStart() error {
 	go rs.loop()
 	return nil
 }
 
 // OnStop implements cmn.Service.
-func (rs *ReconnRemoteSigner) OnStop() {
+func (rs *MockRemoteSigner) OnStop() {
 }
 
-// main loop for ReconnRemoteSigner
-func (rs *ReconnRemoteSigner) loop() {
+// main loop for MockRemoteSigner
+func (rs *MockRemoteSigner) loop() {
 	var conn net.Conn
 	for {
 		if !rs.IsRunning() {
@@ -131,7 +133,7 @@ func (rs *ReconnRemoteSigner) loop() {
 	}
 }
 
-func (rs *ReconnRemoteSigner) handleRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
+func (rs *MockRemoteSigner) handleRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
 	switch typedReq := req.Sum.(type) {
 	case *cometprotoprivval.Message_SignVoteRequest:
 		return rs.handleSignVoteRequest(req)
@@ -147,64 +149,46 @@ func (rs *ReconnRemoteSigner) handleRequest(req cometprotoprivval.Message) comet
 	}
 }
 
-func (rs *ReconnRemoteSigner) handleSignVoteRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.loadBalancer.SendRequest(req)
-	if err == nil {
-		return *res
-	}
+func (rs *MockRemoteSigner) handleSignVoteRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
+	rs.counter.IncSignVoteRequests()
 
 	return cometprotoprivval.Message{
 		Sum: &cometprotoprivval.Message_SignedVoteResponse{SignedVoteResponse: &cometprotoprivval.SignedVoteResponse{
 			Vote:  cometproto.Vote{},
-			Error: getRemoteSignerError(err),
+			Error: nil,
 		}},
 	}
 }
 
-func (rs *ReconnRemoteSigner) handleSignProposalRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.loadBalancer.SendRequest(req)
-	if err == nil {
-		return *res
-	}
+func (rs *MockRemoteSigner) handleSignProposalRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
+	rs.counter.IncSignProposalRequests()
 
 	return cometprotoprivval.Message{
 		Sum: &cometprotoprivval.Message_SignedProposalResponse{
 			SignedProposalResponse: &cometprotoprivval.SignedProposalResponse{
 				Proposal: cometproto.Proposal{},
-				Error:    getRemoteSignerError(err),
+				Error:    nil,
 			}},
 	}
 }
 
-func (rs *ReconnRemoteSigner) handlePubKeyRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.loadBalancer.SendRequest(req)
-	if err == nil {
-		return *res
-	}
+func (rs *MockRemoteSigner) handlePubKeyRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
+	rs.counter.IncPubKeyRequests()
 
 	return cometprotoprivval.Message{
 		Sum: &cometprotoprivval.Message_PubKeyResponse{PubKeyResponse: &cometprotoprivval.PubKeyResponse{
 			PubKey: cometprotocrypto.PublicKey{},
-			Error:  getRemoteSignerError(err),
+			Error:  nil,
 		}},
 	}
 }
 
-func (rs *ReconnRemoteSigner) handlePingRequest() cometprotoprivval.Message {
+func (rs *MockRemoteSigner) handlePingRequest() cometprotoprivval.Message {
+	rs.counter.IncPingRequests()
 	return cometprotoprivval.Message{
 		Sum: &cometprotoprivval.Message_PingResponse{
 			PingResponse: &cometprotoprivval.PingResponse{},
 		},
-	}
-}
-
-func getRemoteSignerError(err error) *cometprotoprivval.RemoteSignerError {
-	if err == nil {
-		return nil
-	}
-	return &cometprotoprivval.RemoteSignerError{
-		Code:        0,
-		Description: err.Error(),
 	}
 }
 
@@ -221,4 +205,49 @@ func WriteMsg(writer io.Writer, msg cometprotoprivval.Message) (err error) {
 	protoWriter := protoio.NewDelimitedWriter(writer)
 	_, err = protoWriter.WriteMsg(&msg)
 	return err
+}
+
+// Counter is a struct that counts the number of requests received by the
+// MockRemoteSigner.
+type Counter struct {
+	PubKeyRequests       int
+	SignVoteRequests     int
+	SignProposalRequests int
+	PingRequests         int
+	mu                   sync.Mutex
+}
+
+func (c *Counter) Copy() Counter {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return Counter{
+		PubKeyRequests:       c.PubKeyRequests,
+		SignVoteRequests:     c.SignVoteRequests,
+		SignProposalRequests: c.SignProposalRequests,
+		PingRequests:         c.PingRequests,
+	}
+}
+
+func (c *Counter) IncPubKeyRequests() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.PubKeyRequests++
+}
+
+func (c *Counter) IncSignVoteRequests() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.SignVoteRequests++
+}
+
+func (c *Counter) IncSignProposalRequests() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.SignProposalRequests++
+}
+
+func (c *Counter) IncPingRequests() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.PingRequests++
 }

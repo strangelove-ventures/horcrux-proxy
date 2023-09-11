@@ -108,6 +108,11 @@ func (sl *SignerListenerEndpoint) SendRequest(request privvalproto.Message) (*pr
 	sl.instanceMtx.Lock()
 	defer sl.instanceMtx.Unlock()
 
+	return sl.SendRequestLocked(request)
+}
+
+// SendRequest ensures there is a connection, sends a request and waits for a response
+func (sl *SignerListenerEndpoint) SendRequestLocked(request privvalproto.Message) (*privvalproto.Message, error) {
 	err := sl.ensureConnection(sl.timeoutAccept)
 	if err != nil {
 		return nil, err

@@ -2,11 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"net"
 
-	"github.com/cometbft/cometbft/crypto/ed25519"
 	cometlog "github.com/cometbft/cometbft/libs/log"
-	cometnet "github.com/cometbft/cometbft/libs/net"
 	cometos "github.com/cometbft/cometbft/libs/os"
 	"github.com/spf13/cobra"
 
@@ -15,8 +12,9 @@ import (
 )
 
 const (
-	flagListen = "listen"
-	flagAll    = "all"
+	flagLogLevel = "log-level"
+	flagListen   = "listen"
+	flagAll      = "all"
 )
 
 func startCmd(a *appState) *cobra.Command {
@@ -28,17 +26,28 @@ func startCmd(a *appState) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			out := cmd.OutOrStdout()
 
-			a.logger = cometlog.NewTMLogger(cometlog.NewSyncWriter(out)).With("module", "validator")
+			logLevel, _ := cmd.Flags().GetString(flagLogLevel)
+			logLevelOpt, err := cometlog.AllowLevel(logLevel)
+			if err != nil {
+				return fmt.Errorf("failed to parse log level: %w", err)
+			}
+
+			a.logger = cometlog.NewFilter(cometlog.NewTMLogger(cometlog.NewSyncWriter(out)), logLevelOpt).With("module", "validator")
 
 			a.logger.Info("Horcrux Proxy")
 
-			addr, _ := cmd.Flags().GetString(flagListen)
+			listenAddrs, _ := cmd.Flags().GetStringArray(flagListen)
 			all, _ := cmd.Flags().GetBool(flagAll)
 
-			a.listener = newSignerListenerEndpoint(a.logger, addr)
+			listeners := make([]privval.SignerListener, len(listenAddrs))
+			for i, addr := range listenAddrs {
+				listeners[i] = privval.NewSignerListener(a.logger, addr)
+			}
 
-			if err := a.listener.Start(); err != nil {
-				return fmt.Errorf("failed to start listener: %w", err)
+			a.loadBalancer = privval.NewRemoteSignerLoadBalancer(a.logger, listeners)
+
+			if err := a.loadBalancer.Start(); err != nil {
+				return fmt.Errorf("failed to start listener(s): %w", err)
 			}
 
 			a.sentries = make(map[string]*signer.ReconnRemoteSigner)
@@ -53,35 +62,11 @@ func startCmd(a *appState) *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringP(flagListen, "l", "tcp://0.0.0.0:1234", "Privval listen address for the proxy")
+	cmd.Flags().StringArrayP(flagListen, "l", []string{"tcp://0.0.0.0:1234"}, "Privval listen addresses for the proxy")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
+	cmd.Flags().String(flagLogLevel, "info", "Set log level (debug, info, error, none)")
 
 	return cmd
-}
-
-func newSignerListenerEndpoint(logger cometlog.Logger, addr string) *privval.SignerListenerEndpoint {
-	proto, address := cometnet.ProtocolAndAddress(addr)
-
-	ln, err := net.Listen(proto, address)
-	logger.Info("SignerListener: Listening", "proto", proto, "address", address)
-	if err != nil {
-		panic(err)
-	}
-
-	var listener net.Listener
-
-	if proto == "unix" {
-		unixLn := privval.NewUnixListener(ln)
-		listener = unixLn
-	} else {
-		tcpLn := privval.NewTCPListener(ln, ed25519.GenPrivKey())
-		listener = tcpLn
-	}
-
-	return privval.NewSignerListenerEndpoint(
-		logger,
-		listener,
-	)
 }
 
 func waitAndTerminate(a *appState) {
@@ -93,7 +78,7 @@ func waitAndTerminate(a *appState) {
 				panic(err)
 			}
 		}
-		if err := a.listener.Stop(); err != nil {
+		if err := a.loadBalancer.Stop(); err != nil {
 			panic(err)
 		}
 		close(done)
