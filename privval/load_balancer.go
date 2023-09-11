@@ -11,27 +11,28 @@ import (
 type RemoteSignerLoadBalancer struct {
 	logger    cometlog.Logger
 	listeners []SignerListener
+	avail     chan SignerListener // Available listeners that are ready to accept requests.
 }
 
 func NewRemoteSignerLoadBalancer(logger cometlog.Logger, listeners []SignerListener) *RemoteSignerLoadBalancer {
+	ch := make(chan SignerListener, len(listeners))
+	for i := range listeners {
+		ch <- listeners[i]
+	}
 	return &RemoteSignerLoadBalancer{
 		logger:    logger,
 		listeners: listeners,
+		avail:     ch,
 	}
 }
 
 // SendRequest sends a request to the first available listener.
 func (lb *RemoteSignerLoadBalancer) SendRequest(request privvalproto.Message) (*privvalproto.Message, error) {
-	reqCh := make(chan privvalproto.Message)
-	resCh := make(chan signerListenerEndpointResponse)
+	lis := <-lb.avail
+	defer func() { lb.avail <- lis }()
 
-	for _, listener := range lb.listeners {
-		go lb.send(listener, reqCh, resCh)
-	}
-	reqCh <- request
-	res := <-resCh
-	close(reqCh)
-	return res.res, res.err
+	lb.logger.Debug("Sent request to listener", "address", lis.address)
+	return lis.SendRequest(request)
 }
 
 func (lb *RemoteSignerLoadBalancer) Start() error {
@@ -49,18 +50,4 @@ func (lb *RemoteSignerLoadBalancer) Stop() error {
 		err = errors.Join(err, listener.Stop())
 	}
 	return err
-}
-
-type signerListenerEndpointResponse struct {
-	res *privvalproto.Message
-	err error
-}
-
-func (lb *RemoteSignerLoadBalancer) send(listener SignerListener, reqCh <-chan privvalproto.Message, resCh chan<- signerListenerEndpointResponse) {
-	for req := range reqCh {
-		var res signerListenerEndpointResponse
-		lb.logger.Debug("Sent request to listener", "address", listener.address)
-		res.res, res.err = listener.SendRequest(req)
-		resCh <- res
-	}
 }
