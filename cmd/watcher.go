@@ -81,6 +81,8 @@ func NewSentryWatcher(
 	}, nil
 }
 
+// Watch will reconcile the sentries with the kube api at a reasonable interval.
+// It must be called only once.
 func (w *SentryWatcher) Watch(ctx context.Context) {
 	defer close(w.done)
 	const interval = 30 * time.Second
@@ -101,7 +103,7 @@ func (w *SentryWatcher) Watch(ctx context.Context) {
 	}
 }
 
-// Stop can only be called once
+// Stop cleans up the sentries and stops the watcher. It must be called only once.
 func (w *SentryWatcher) Stop() error {
 	close(w.stop)
 	<-w.done
