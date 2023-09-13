@@ -8,7 +8,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/strangelove-ventures/horcrux-proxy/privval"
-	"github.com/strangelove-ventures/horcrux-proxy/signer"
 )
 
 const (
@@ -17,7 +16,7 @@ const (
 	flagAll      = "all"
 )
 
-func startCmd(a *appState) *cobra.Command {
+func startCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:          "start",
 		Short:        "Start horcrux-proxy process",
@@ -32,31 +31,33 @@ func startCmd(a *appState) *cobra.Command {
 				return fmt.Errorf("failed to parse log level: %w", err)
 			}
 
-			a.logger = cometlog.NewFilter(cometlog.NewTMLogger(cometlog.NewSyncWriter(out)), logLevelOpt).With("module", "validator")
-
-			a.logger.Info("Horcrux Proxy")
+			logger := cometlog.NewFilter(cometlog.NewTMLogger(cometlog.NewSyncWriter(out)), logLevelOpt).With("module", "validator")
+			logger.Info("Horcrux Proxy")
 
 			listenAddrs, _ := cmd.Flags().GetStringArray(flagListen)
 			all, _ := cmd.Flags().GetBool(flagAll)
 
 			listeners := make([]privval.SignerListener, len(listenAddrs))
 			for i, addr := range listenAddrs {
-				listeners[i] = privval.NewSignerListener(a.logger, addr)
+				listeners[i] = privval.NewSignerListener(logger, addr)
 			}
 
-			a.loadBalancer = privval.NewRemoteSignerLoadBalancer(a.logger, listeners)
-
-			if err := a.loadBalancer.Start(); err != nil {
+			loadBalancer := privval.NewRemoteSignerLoadBalancer(logger, listeners)
+			if err = loadBalancer.Start(); err != nil {
 				return fmt.Errorf("failed to start listener(s): %w", err)
 			}
+			defer logIfErr(logger, loadBalancer.Stop)
 
-			a.sentries = make(map[string]*signer.ReconnRemoteSigner)
+			ctx := cmd.Context()
 
-			if err := watchForChangedSentries(cmd.Context(), a, all); err != nil {
+			watcher, err := NewSentryWatcher(ctx, logger, all, loadBalancer)
+			if err != nil {
 				return err
 			}
+			defer logIfErr(logger, watcher.Stop)
+			go watcher.Watch(ctx)
 
-			waitAndTerminate(a)
+			waitForSignals(logger)
 
 			return nil
 		},
@@ -69,18 +70,15 @@ func startCmd(a *appState) *cobra.Command {
 	return cmd
 }
 
-func waitAndTerminate(a *appState) {
+func logIfErr(logger cometlog.Logger, fn func() error) {
+	if err := fn(); err != nil {
+		logger.Error("Error", "err", err)
+	}
+}
+
+func waitForSignals(logger cometlog.Logger) {
 	done := make(chan struct{})
-	cometos.TrapSignal(a.logger, func() {
-		for _, s := range a.sentries {
-			err := s.Stop()
-			if err != nil {
-				panic(err)
-			}
-		}
-		if err := a.loadBalancer.Stop(); err != nil {
-			panic(err)
-		}
+	cometos.TrapSignal(logger, func() {
 		close(done)
 	})
 	<-done

@@ -38,7 +38,7 @@ type SignerListenerEndpoint struct {
 	pingTimer     *time.Ticker
 	pingInterval  time.Duration
 
-	instanceMtx cmtsync.Mutex // Ensures instance public methods access, i.e. SendRequest
+	mu cmtsync.Mutex // Ensures instance public methods access, i.e. SendRequest
 }
 
 // NewSignerListenerEndpoint returns an instance of SignerListenerEndpoint.
@@ -81,8 +81,8 @@ func (sl *SignerListenerEndpoint) OnStart() error {
 
 // OnStop implements service.Service
 func (sl *SignerListenerEndpoint) OnStop() {
-	sl.instanceMtx.Lock()
-	defer sl.instanceMtx.Unlock()
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
 	_ = sl.Close()
 
 	// Stop listening
@@ -98,15 +98,15 @@ func (sl *SignerListenerEndpoint) OnStop() {
 
 // WaitForConnection waits maxWait for a connection or returns a timeout error
 func (sl *SignerListenerEndpoint) WaitForConnection(maxWait time.Duration) error {
-	sl.instanceMtx.Lock()
-	defer sl.instanceMtx.Unlock()
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
 	return sl.ensureConnection(maxWait)
 }
 
 // SendRequest ensures there is a connection, sends a request and waits for a response
 func (sl *SignerListenerEndpoint) SendRequest(request privvalproto.Message) (*privvalproto.Message, error) {
-	sl.instanceMtx.Lock()
-	defer sl.instanceMtx.Unlock()
+	sl.mu.Lock()
+	defer sl.mu.Unlock()
 
 	err := sl.ensureConnection(sl.timeoutAccept)
 	if err != nil {
@@ -209,12 +209,10 @@ func (sl *SignerListenerEndpoint) pingLoop() {
 	for {
 		select {
 		case <-sl.pingTimer.C:
-			{
-				_, err := sl.SendRequest(mustWrapMsg(&privvalproto.PingRequest{}))
-				if err != nil {
-					sl.Logger.Error("SignerListener: Ping timeout")
-					sl.triggerReconnect()
-				}
+			_, err := sl.SendRequest(mustWrapMsg(&privvalproto.PingRequest{}))
+			if err != nil {
+				sl.Logger.Error("SignerListener: Ping timeout")
+				sl.triggerReconnect()
 			}
 		case <-sl.Quit():
 			return
