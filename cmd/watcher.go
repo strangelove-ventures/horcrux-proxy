@@ -86,8 +86,8 @@ func NewSentryWatcher(
 func (w *SentryWatcher) Watch(ctx context.Context) {
 	defer close(w.done)
 	const interval = 30 * time.Second
-	tick := time.NewTicker(interval)
-	defer tick.Stop()
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
 
 	for {
 		if err := w.reconcileSentries(ctx); err != nil {
@@ -98,7 +98,8 @@ func (w *SentryWatcher) Watch(ctx context.Context) {
 			return
 		case <-ctx.Done():
 			return
-		case <-tick.C:
+		case <-timer.C:
+			timer.Reset(interval)
 		}
 	}
 }
