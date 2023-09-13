@@ -106,6 +106,7 @@ func (w *SentryWatcher) Watch(ctx context.Context) {
 
 // Stop cleans up the sentries and stops the watcher. It must be called only once.
 func (w *SentryWatcher) Stop() error {
+	// The dual channel synchronization ensures w.sentries is only read/mutated by one goroutine.
 	close(w.stop)
 	<-w.done
 	var err error
