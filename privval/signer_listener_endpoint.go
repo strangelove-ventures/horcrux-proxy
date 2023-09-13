@@ -209,17 +209,13 @@ func (sl *SignerListenerEndpoint) pingLoop() {
 	for {
 		select {
 		case <-sl.pingTimer.C:
-			sl.Ping()
+			_, err := sl.SendRequest(mustWrapMsg(&privvalproto.PingRequest{}))
+			if err != nil {
+				sl.Logger.Error("SignerListener: Ping timeout")
+				sl.triggerReconnect()
+			}
 		case <-sl.Quit():
 			return
 		}
-	}
-}
-
-func (sl *SignerListenerEndpoint) Ping() {
-	_, err := sl.SendRequest(mustWrapMsg(&privvalproto.PingRequest{}))
-	if err != nil {
-		sl.Logger.Error("SignerListener: Ping timeout")
-		sl.triggerReconnect()
 	}
 }
