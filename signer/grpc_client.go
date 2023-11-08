@@ -3,9 +3,12 @@ package signer
 import (
 	"context"
 	"fmt"
+	"time"
 
 	cometlog "github.com/cometbft/cometbft/libs/log"
+	cometcrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
+	"github.com/strangelove-ventures/horcrux/signer"
 	"github.com/strangelove-ventures/horcrux/signer/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -49,10 +52,22 @@ func (c *HorcruxGRPCClient) SendRequest(req cometprotoprivval.Message) (*cometpr
 }
 
 func (c *HorcruxGRPCClient) handleSignVoteRequest(req cometprotoprivval.Message) (*cometprotoprivval.Message, error) {
-	res, err := c.grpcClient.SignVote(context.TODO(), req.GetSignVoteRequest())
+	voteReq := req.GetSignVoteRequest()
+	vote := voteReq.Vote
+
+	res, err := c.grpcClient.Sign(context.TODO(), &proto.SignBlockRequest{
+		ChainID: voteReq.ChainId,
+		Block:   signer.VoteToBlock(voteReq.ChainId, vote).ToProto(),
+	})
 	if err == nil {
+		vote.Signature = res.Signature
+		vote.Timestamp = time.Unix(0, res.Timestamp)
 		return &cometprotoprivval.Message{
-			Sum: &cometprotoprivval.Message_SignedVoteResponse{SignedVoteResponse: res},
+			Sum: &cometprotoprivval.Message_SignedVoteResponse{
+				SignedVoteResponse: &cometprotoprivval.SignedVoteResponse{
+					Vote: *vote,
+				},
+			},
 		}, nil
 	}
 
@@ -64,10 +79,21 @@ func (c *HorcruxGRPCClient) handleSignVoteRequest(req cometprotoprivval.Message)
 }
 
 func (c *HorcruxGRPCClient) handleSignProposalRequest(req cometprotoprivval.Message) (*cometprotoprivval.Message, error) {
-	res, err := c.grpcClient.SignProposal(context.TODO(), req.GetSignProposalRequest())
+	proposalReq := req.GetSignProposalRequest()
+	proposal := proposalReq.Proposal
+	res, err := c.grpcClient.Sign(context.TODO(), &proto.SignBlockRequest{
+		ChainID: proposalReq.ChainId,
+		Block:   signer.ProposalToBlock(proposalReq.ChainId, proposal).ToProto(),
+	})
 	if err == nil {
+		proposal.Signature = res.Signature
+		proposal.Timestamp = time.Unix(0, res.Timestamp)
 		return &cometprotoprivval.Message{
-			Sum: &cometprotoprivval.Message_SignedProposalResponse{SignedProposalResponse: res},
+			Sum: &cometprotoprivval.Message_SignedProposalResponse{
+				SignedProposalResponse: &cometprotoprivval.SignedProposalResponse{
+					Proposal: *proposal,
+				},
+			},
 		}, nil
 	}
 
@@ -79,10 +105,20 @@ func (c *HorcruxGRPCClient) handleSignProposalRequest(req cometprotoprivval.Mess
 }
 
 func (c *HorcruxGRPCClient) handlePubKeyRequest(req cometprotoprivval.Message) (*cometprotoprivval.Message, error) {
-	res, err := c.grpcClient.PubKey(context.TODO(), req.GetPubKeyRequest())
+	res, err := c.grpcClient.PubKey(context.TODO(), &proto.PubKeyRequest{
+		ChainId: req.GetPubKeyRequest().ChainId,
+	})
 	if err == nil {
 		return &cometprotoprivval.Message{
-			Sum: &cometprotoprivval.Message_PubKeyResponse{PubKeyResponse: res},
+			Sum: &cometprotoprivval.Message_PubKeyResponse{
+				PubKeyResponse: &cometprotoprivval.PubKeyResponse{
+					PubKey: cometcrypto.PublicKey{
+						Sum: &cometcrypto.PublicKey_Ed25519{
+							Ed25519: res.PubKey,
+						},
+					},
+				},
+			},
 		}, nil
 	}
 
