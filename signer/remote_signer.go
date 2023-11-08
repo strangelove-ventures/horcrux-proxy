@@ -1,7 +1,6 @@
 package signer
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"time"
@@ -12,11 +11,12 @@ import (
 	"github.com/cometbft/cometbft/libs/protoio"
 	cometservice "github.com/cometbft/cometbft/libs/service"
 	cometp2pconn "github.com/cometbft/cometbft/p2p/conn"
-	cometprotocrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
-	cometproto "github.com/cometbft/cometbft/proto/tendermint/types"
-	"github.com/strangelove-ventures/horcrux-proxy/privval"
 )
+
+type HorcruxConnection interface {
+	SendRequest(request cometprotoprivval.Message) (*cometprotoprivval.Message, error)
+}
 
 // ReconnRemoteSigner dials using its dialer and responds to any
 // signature requests using its privVal.
@@ -26,7 +26,7 @@ type ReconnRemoteSigner struct {
 	address string
 	privKey cometcryptoed25519.PrivKey
 
-	loadBalancer *privval.RemoteSignerLoadBalancer
+	horcruxConnection HorcruxConnection
 
 	dialer net.Dialer
 }
@@ -39,14 +39,14 @@ type ReconnRemoteSigner struct {
 func NewReconnRemoteSigner(
 	address string,
 	logger cometlog.Logger,
-	loadBalancer *privval.RemoteSignerLoadBalancer,
+	horcruxConnection HorcruxConnection,
 	dialer net.Dialer,
 ) *ReconnRemoteSigner {
 	rs := &ReconnRemoteSigner{
-		address:      address,
-		dialer:       dialer,
-		loadBalancer: loadBalancer,
-		privKey:      cometcryptoed25519.GenPrivKey(),
+		address:           address,
+		dialer:            dialer,
+		horcruxConnection: horcruxConnection,
+		privKey:           cometcryptoed25519.GenPrivKey(),
 	}
 
 	rs.BaseService = *cometservice.NewBaseService(logger, "RemoteSigner", rs)
@@ -120,91 +120,27 @@ func (rs *ReconnRemoteSigner) loop() {
 		}
 
 		// handleRequest handles request errors. We always send back a response
-		res := rs.handleRequest(req)
+		res, err := rs.horcruxConnection.SendRequest(req)
+		if err != nil {
+			rs.Logger.Error("handleRequest", "err", err)
+			conn.Close()
+			conn = nil
+			continue
+		}
 
-		err = WriteMsg(conn, res)
+		if res == nil {
+			rs.Logger.Error("handleRequest", "err", "nil response")
+			conn.Close()
+			conn = nil
+			continue
+		}
+
+		err = WriteMsg(conn, *res)
 		if err != nil {
 			rs.Logger.Error("writeMsg", "err", err)
 			conn.Close()
 			conn = nil
 		}
-	}
-}
-
-func (rs *ReconnRemoteSigner) handleRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	switch typedReq := req.Sum.(type) {
-	case *cometprotoprivval.Message_SignVoteRequest:
-		return rs.handleSignVoteRequest(req)
-	case *cometprotoprivval.Message_SignProposalRequest:
-		return rs.handleSignProposalRequest(req)
-	case *cometprotoprivval.Message_PubKeyRequest:
-		return rs.handlePubKeyRequest(req)
-	case *cometprotoprivval.Message_PingRequest:
-		return rs.handlePingRequest()
-	default:
-		rs.Logger.Error("Unknown request", "err", fmt.Errorf("%v", typedReq))
-		return cometprotoprivval.Message{}
-	}
-}
-
-func (rs *ReconnRemoteSigner) handleSignVoteRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.loadBalancer.SendRequest(req)
-	if err == nil {
-		return *res
-	}
-
-	return cometprotoprivval.Message{
-		Sum: &cometprotoprivval.Message_SignedVoteResponse{SignedVoteResponse: &cometprotoprivval.SignedVoteResponse{
-			Vote:  cometproto.Vote{},
-			Error: getRemoteSignerError(err),
-		}},
-	}
-}
-
-func (rs *ReconnRemoteSigner) handleSignProposalRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.loadBalancer.SendRequest(req)
-	if err == nil {
-		return *res
-	}
-
-	return cometprotoprivval.Message{
-		Sum: &cometprotoprivval.Message_SignedProposalResponse{
-			SignedProposalResponse: &cometprotoprivval.SignedProposalResponse{
-				Proposal: cometproto.Proposal{},
-				Error:    getRemoteSignerError(err),
-			}},
-	}
-}
-
-func (rs *ReconnRemoteSigner) handlePubKeyRequest(req cometprotoprivval.Message) cometprotoprivval.Message {
-	res, err := rs.loadBalancer.SendRequest(req)
-	if err == nil {
-		return *res
-	}
-
-	return cometprotoprivval.Message{
-		Sum: &cometprotoprivval.Message_PubKeyResponse{PubKeyResponse: &cometprotoprivval.PubKeyResponse{
-			PubKey: cometprotocrypto.PublicKey{},
-			Error:  getRemoteSignerError(err),
-		}},
-	}
-}
-
-func (rs *ReconnRemoteSigner) handlePingRequest() cometprotoprivval.Message {
-	return cometprotoprivval.Message{
-		Sum: &cometprotoprivval.Message_PingResponse{
-			PingResponse: &cometprotoprivval.PingResponse{},
-		},
-	}
-}
-
-func getRemoteSignerError(err error) *cometprotoprivval.RemoteSignerError {
-	if err == nil {
-		return nil
-	}
-	return &cometprotoprivval.RemoteSignerError{
-		Code:        0,
-		Description: err.Error(),
 	}
 }
 

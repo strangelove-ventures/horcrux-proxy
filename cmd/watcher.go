@@ -9,7 +9,6 @@ import (
 	"time"
 
 	cometlog "github.com/cometbft/cometbft/libs/log"
-	"github.com/strangelove-ventures/horcrux-proxy/privval"
 	"github.com/strangelove-ventures/horcrux-proxy/signer"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -26,7 +25,7 @@ const (
 type SentryWatcher struct {
 	all      bool
 	client   *kubernetes.Clientset
-	lb       *privval.RemoteSignerLoadBalancer
+	hc       signer.HorcruxConnection
 	log      cometlog.Logger
 	node     string
 	sentries map[string]*signer.ReconnRemoteSigner
@@ -39,7 +38,7 @@ func NewSentryWatcher(
 	ctx context.Context,
 	logger cometlog.Logger,
 	all bool, // should we connect to sentries on all nodes, or just this node?
-	lb *privval.RemoteSignerLoadBalancer,
+	hc signer.HorcruxConnection,
 ) (*SentryWatcher, error) {
 	config, err := rest.InClusterConfig()
 	if err != nil {
@@ -73,7 +72,7 @@ func NewSentryWatcher(
 		all:      all,
 		client:   clientset,
 		done:     make(chan struct{}),
-		lb:       lb,
+		hc:       hc,
 		log:      logger,
 		node:     thisNode,
 		sentries: make(map[string]*signer.ReconnRemoteSigner),
@@ -194,7 +193,7 @@ func (w *SentryWatcher) reconcileSentries(
 
 	for _, newSentry := range newSentries {
 		dialer := net.Dialer{Timeout: 2 * time.Second}
-		s := signer.NewReconnRemoteSigner(newSentry, w.log, w.lb, dialer)
+		s := signer.NewReconnRemoteSigner(newSentry, w.log, w.hc, dialer)
 
 		if err := s.Start(); err != nil {
 			return fmt.Errorf("failed to start new remote signer(s): %w", err)

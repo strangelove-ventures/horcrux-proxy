@@ -8,12 +8,14 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/strangelove-ventures/horcrux-proxy/privval"
+	"github.com/strangelove-ventures/horcrux-proxy/signer"
 )
 
 const (
-	flagLogLevel = "log-level"
-	flagListen   = "listen"
-	flagAll      = "all"
+	flagLogLevel    = "log-level"
+	flagListen      = "listen"
+	flagAll         = "all"
+	flagGRPCAddress = "grpc"
 )
 
 func startCmd() *cobra.Command {
@@ -42,15 +44,28 @@ func startCmd() *cobra.Command {
 				listeners[i] = privval.NewSignerListener(logger, addr)
 			}
 
-			loadBalancer := privval.NewRemoteSignerLoadBalancer(logger, listeners)
-			if err = loadBalancer.Start(); err != nil {
-				return fmt.Errorf("failed to start listener(s): %w", err)
+			var hc signer.HorcruxConnection
+
+			grpcAddr, _ := cmd.Flags().GetString(flagGRPCAddress)
+
+			if grpcAddr != "" {
+				hc, err = signer.NewHorcruxGRPCClient(logger, grpcAddr)
+				if err != nil {
+					return fmt.Errorf("failed to create grpc connection: %w", err)
+				}
+			} else {
+				loadBalancer := privval.NewRemoteSignerLoadBalancer(logger, listeners)
+				if err = loadBalancer.Start(); err != nil {
+					return fmt.Errorf("failed to start listener(s): %w", err)
+				}
+				defer logIfErr(logger, loadBalancer.Stop)
+
+				hc = loadBalancer
 			}
-			defer logIfErr(logger, loadBalancer.Stop)
 
 			ctx := cmd.Context()
 
-			watcher, err := NewSentryWatcher(ctx, logger, all, loadBalancer)
+			watcher, err := NewSentryWatcher(ctx, logger, all, hc)
 			if err != nil {
 				return err
 			}
@@ -64,6 +79,7 @@ func startCmd() *cobra.Command {
 	}
 
 	cmd.Flags().StringArrayP(flagListen, "l", []string{"tcp://0.0.0.0:1234"}, "Privval listen addresses for the proxy")
+	cmd.Flags().StringP(flagGRPCAddress, "g", "", "GRPC address for the proxy")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 	cmd.Flags().String(flagLogLevel, "info", "Set log level (debug, info, error, none)")
 
