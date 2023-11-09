@@ -14,6 +14,8 @@ import (
 	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
 )
 
+const sleep = 1
+
 type HorcruxConnection interface {
 	SendRequest(request cometprotoprivval.Message) (*cometprotoprivval.Message, error)
 }
@@ -84,8 +86,8 @@ func (rs *ReconnRemoteSigner) loop() {
 			netConn, err := rs.dialer.Dial(proto, address)
 			if err != nil {
 				rs.Logger.Error("Dialing", "err", err)
-				rs.Logger.Info("Retrying", "sleep (s)", 3, "address", rs.address)
-				time.Sleep(time.Second * 3)
+				rs.Logger.Info("Retrying", "sleep (s)", sleep, "address", rs.address)
+				time.Sleep(time.Second * time.Duration(sleep))
 				continue
 			}
 
@@ -97,8 +99,8 @@ func (rs *ReconnRemoteSigner) loop() {
 				}
 				conn = nil
 				rs.Logger.Error("Secret Conn", "err", err)
-				rs.Logger.Info("Retrying", "sleep (s)", 3, "address", rs.address)
-				time.Sleep(time.Second * 3)
+				rs.Logger.Info("Retrying", "sleep (s)", sleep, "address", rs.address)
+				time.Sleep(time.Second * time.Duration(sleep))
 				continue
 			}
 		}
