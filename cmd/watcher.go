@@ -23,12 +23,14 @@ const (
 )
 
 type SentryWatcher struct {
-	all      bool
-	client   *kubernetes.Clientset
-	hc       signer.HorcruxConnection
-	log      cometlog.Logger
-	node     string
-	sentries map[string]*signer.ReconnRemoteSigner
+	all                bool
+	client             *kubernetes.Clientset
+	hc                 signer.HorcruxConnection
+	log                cometlog.Logger
+	node               string
+	operator           bool
+	persistentSentries []*signer.ReconnRemoteSigner
+	sentries           map[string]*signer.ReconnRemoteSigner
 
 	stop chan struct{}
 	done chan struct{}
@@ -39,50 +41,72 @@ func NewSentryWatcher(
 	logger cometlog.Logger,
 	all bool, // should we connect to sentries on all nodes, or just this node?
 	hc signer.HorcruxConnection,
+	operator bool,
+	sentries []string,
 ) (*SentryWatcher, error) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get in cluster config: %w", err)
-	}
-	// creates the clientset
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kube clientset: %w", err)
-	}
-
+	var clientset *kubernetes.Clientset
 	var thisNode string
-	if !all {
-		// need to determine which node this pod is on so we can only connect to sentries on this node
 
-		nsbz, err := os.ReadFile(namespaceFile)
+	if operator {
+		config, err := rest.InClusterConfig()
 		if err != nil {
-			return nil, fmt.Errorf("failed to read namespace from service account: %w", err)
+			return nil, fmt.Errorf("failed to get in cluster config: %w", err)
 		}
-		ns := string(nsbz)
-
-		thisPod, err := clientset.CoreV1().Pods(ns).Get(ctx, os.Getenv("HOSTNAME"), metav1.GetOptions{})
+		// creates the clientset
+		clientset, err := kubernetes.NewForConfig(config)
 		if err != nil {
-			return nil, fmt.Errorf("failed to get this pod: %w", err)
+			return nil, fmt.Errorf("failed to create kube clientset: %w", err)
 		}
 
-		thisNode = thisPod.Spec.NodeName
+		if !all {
+			// need to determine which node this pod is on so we can only connect to sentries on this node
+
+			nsbz, err := os.ReadFile(namespaceFile)
+			if err != nil {
+				return nil, fmt.Errorf("failed to read namespace from service account: %w", err)
+			}
+			ns := string(nsbz)
+
+			thisPod, err := clientset.CoreV1().Pods(ns).Get(ctx, os.Getenv("HOSTNAME"), metav1.GetOptions{})
+			if err != nil {
+				return nil, fmt.Errorf("failed to get this pod: %w", err)
+			}
+
+			thisNode = thisPod.Spec.NodeName
+		}
+	}
+
+	persistentSentries := make([]*signer.ReconnRemoteSigner, len(sentries))
+	for i, sentry := range sentries {
+		dialer := net.Dialer{Timeout: 2 * time.Second}
+		persistentSentries[i] = signer.NewReconnRemoteSigner(sentry, logger, hc, dialer)
 	}
 
 	return &SentryWatcher{
-		all:      all,
-		client:   clientset,
-		done:     make(chan struct{}),
-		hc:       hc,
-		log:      logger,
-		node:     thisNode,
-		sentries: make(map[string]*signer.ReconnRemoteSigner),
-		stop:     make(chan struct{}),
+		all:                all,
+		client:             clientset,
+		done:               make(chan struct{}),
+		hc:                 hc,
+		log:                logger,
+		node:               thisNode,
+		operator:           operator,
+		persistentSentries: persistentSentries,
+		sentries:           make(map[string]*signer.ReconnRemoteSigner),
+		stop:               make(chan struct{}),
 	}, nil
 }
 
 // Watch will reconcile the sentries with the kube api at a reasonable interval.
 // It must be called only once.
 func (w *SentryWatcher) Watch(ctx context.Context) {
+	for _, sentry := range w.persistentSentries {
+		if err := sentry.Start(); err != nil {
+			w.log.Error("Failed to start persistent sentry", "error", err)
+		}
+	}
+	if !w.operator {
+		return
+	}
 	defer close(w.done)
 	const interval = 30 * time.Second
 	timer := time.NewTimer(interval)
@@ -109,6 +133,9 @@ func (w *SentryWatcher) Stop() error {
 	close(w.stop)
 	<-w.done
 	var err error
+	for _, sentry := range w.persistentSentries {
+		err = errors.Join(err, sentry.Stop())
+	}
 	for _, sentry := range w.sentries {
 		err = errors.Join(err, sentry.Stop())
 	}

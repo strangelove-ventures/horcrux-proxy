@@ -16,6 +16,8 @@ const (
 	flagListen      = "listen"
 	flagAll         = "all"
 	flagGRPCAddress = "grpc"
+	flagOperator    = "operator"
+	flagSentry      = "sentry"
 )
 
 func startCmd() *cobra.Command {
@@ -65,7 +67,11 @@ func startCmd() *cobra.Command {
 
 			ctx := cmd.Context()
 
-			watcher, err := NewSentryWatcher(ctx, logger, all, hc)
+			// if we're running in kubernetes, we can auto-discover sentries
+			operator, _ := cmd.Flags().GetBool(flagOperator)
+			sentries, _ := cmd.Flags().GetStringArray(flagSentry)
+
+			watcher, err := NewSentryWatcher(ctx, logger, all, hc, operator, sentries)
 			if err != nil {
 				return err
 			}
@@ -78,7 +84,9 @@ func startCmd() *cobra.Command {
 		},
 	}
 
-	cmd.Flags().StringArrayP(flagListen, "l", []string{"tcp://0.0.0.0:1234"}, "Privval listen addresses for the proxy")
+	cmd.Flags().StringArrayP(flagListen, "l", nil, "Privval listen addresses for the proxy (e.g. tcp://0.0.0.0:1234)")
+	cmd.Flags().StringArrayP(flagSentry, "s", nil, "Privval connect addresses for the proxy")
+	cmd.Flags().BoolP(flagOperator, "o", true, "Use this when running in kubernetes with the Cosmos Operator to auto-discover sentries")
 	cmd.Flags().StringP(flagGRPCAddress, "g", "", "GRPC address for the proxy")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 	cmd.Flags().String(flagLogLevel, "info", "Set log level (debug, info, error, none)")
