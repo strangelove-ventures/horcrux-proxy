@@ -53,7 +53,7 @@ func NewSentryWatcher(
 			return nil, fmt.Errorf("failed to get in cluster config: %w", err)
 		}
 		// creates the clientset
-		clientset, err := kubernetes.NewForConfig(config)
+		clientset, err = kubernetes.NewForConfig(config)
 		if err != nil {
 			return nil, fmt.Errorf("failed to create kube clientset: %w", err)
 		}
