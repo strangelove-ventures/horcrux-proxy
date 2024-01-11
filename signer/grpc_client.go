@@ -8,8 +8,8 @@ import (
 	cometlog "github.com/cometbft/cometbft/libs/log"
 	cometcrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
 	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
-	"github.com/strangelove-ventures/horcrux/signer"
-	"github.com/strangelove-ventures/horcrux/signer/proto"
+	"github.com/strangelove-ventures/horcrux/v3/signer"
+	"github.com/strangelove-ventures/horcrux/v3/signer/proto"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -61,6 +61,7 @@ func (c *HorcruxGRPCClient) handleSignVoteRequest(req cometprotoprivval.Message)
 	})
 	if err == nil {
 		vote.Signature = res.Signature
+		vote.ExtensionSignature = res.VoteExtSignature
 		vote.Timestamp = time.Unix(0, res.Timestamp)
 		return &cometprotoprivval.Message{
 			Sum: &cometprotoprivval.Message_SignedVoteResponse{
