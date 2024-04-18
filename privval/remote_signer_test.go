@@ -3,12 +3,12 @@ package privval_test
 import (
 	"fmt"
 	"io"
+	"log/slog"
 	"net"
 	"sync"
 	"time"
 
 	cometcryptoed25519 "github.com/cometbft/cometbft/crypto/ed25519"
-	cometlog "github.com/cometbft/cometbft/libs/log"
 	cometnet "github.com/cometbft/cometbft/libs/net"
 	"github.com/cometbft/cometbft/libs/protoio"
 	cometservice "github.com/cometbft/cometbft/libs/service"
@@ -22,6 +22,8 @@ import (
 // signature requests using its privVal.
 type MockRemoteSigner struct {
 	cometservice.BaseService
+
+	logger *slog.Logger
 
 	address string
 	privKey cometcryptoed25519.PrivKey
@@ -42,16 +44,17 @@ func (rs *MockRemoteSigner) Counter() Counter {
 // If the connection is broken, the MockRemoteSigner will attempt to reconnect.
 func NewMockRemoteSigner(
 	address string,
-	logger cometlog.Logger,
+	logger *slog.Logger,
 	dialer net.Dialer,
 ) *MockRemoteSigner {
 	rs := &MockRemoteSigner{
+		logger:  logger,
 		address: address,
 		dialer:  dialer,
 		privKey: cometcryptoed25519.GenPrivKey(),
 	}
 
-	rs.BaseService = *cometservice.NewBaseService(logger, "RemoteSigner", rs)
+	rs.BaseService = *cometservice.NewBaseService(nil, "RemoteSigner", rs)
 	return rs
 }
 
@@ -72,7 +75,7 @@ func (rs *MockRemoteSigner) loop() {
 		if !rs.IsRunning() {
 			if conn != nil {
 				if err := conn.Close(); err != nil {
-					rs.Logger.Error("Close", "err", err.Error()+"closing listener failed")
+					rs.logger.Error("Close", "err", err.Error()+"closing listener failed")
 				}
 			}
 			return
@@ -85,21 +88,21 @@ func (rs *MockRemoteSigner) loop() {
 			proto, address := cometnet.ProtocolAndAddress(rs.address)
 			netConn, err := rs.dialer.Dial(proto, address)
 			if err != nil {
-				rs.Logger.Error("Dialing", "err", err)
-				rs.Logger.Info("Retrying", "sleep (s)", 3, "address", rs.address)
+				rs.logger.Error("Dialing", "err", err)
+				rs.logger.Info("Retrying", "sleep (s)", 3, "address", rs.address)
 				time.Sleep(time.Second * 3)
 				continue
 			}
 
-			rs.Logger.Info("Connected to Sentry", "address", rs.address)
+			rs.logger.Info("Connected to Sentry", "address", rs.address)
 			conn, err = cometp2pconn.MakeSecretConnection(netConn, rs.privKey)
 			if err != nil {
 				if err := netConn.Close(); err != nil {
-					rs.Logger.Error("Error closing netConn", "err", err)
+					rs.logger.Error("Error closing netConn", "err", err)
 				}
 				conn = nil
-				rs.Logger.Error("Secret Conn", "err", err)
-				rs.Logger.Info("Retrying", "sleep (s)", 3, "address", rs.address)
+				rs.logger.Error("Secret Conn", "err", err)
+				rs.logger.Info("Retrying", "sleep (s)", 3, "address", rs.address)
 				time.Sleep(time.Second * 3)
 				continue
 			}
@@ -108,14 +111,14 @@ func (rs *MockRemoteSigner) loop() {
 		// since dialing can take time, we check running again
 		if !rs.IsRunning() {
 			if err := conn.Close(); err != nil {
-				rs.Logger.Error("Close", "err", err.Error()+"closing listener failed")
+				rs.logger.Error("Close", "err", err.Error()+"closing listener failed")
 			}
 			return
 		}
 
 		req, err := ReadMsg(conn)
 		if err != nil {
-			rs.Logger.Error("readMsg", "err", err)
+			rs.logger.Error("readMsg", "err", err)
 			conn.Close()
 			conn = nil
 			continue
@@ -126,7 +129,7 @@ func (rs *MockRemoteSigner) loop() {
 
 		err = WriteMsg(conn, res)
 		if err != nil {
-			rs.Logger.Error("writeMsg", "err", err)
+			rs.logger.Error("writeMsg", "err", err)
 			conn.Close()
 			conn = nil
 		}
@@ -144,7 +147,7 @@ func (rs *MockRemoteSigner) handleRequest(req cometprotoprivval.Message) cometpr
 	case *cometprotoprivval.Message_PingRequest:
 		return rs.handlePingRequest()
 	default:
-		rs.Logger.Error("Unknown request", "err", fmt.Errorf("%v", typedReq))
+		rs.logger.Error("Unknown request", "err", fmt.Errorf("%v", typedReq))
 		return cometprotoprivval.Message{}
 	}
 }
