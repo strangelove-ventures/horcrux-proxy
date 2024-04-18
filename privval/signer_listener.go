@@ -1,10 +1,10 @@
 package privval
 
 import (
+	"log/slog"
 	"net"
 
 	"github.com/cometbft/cometbft/crypto/ed25519"
-	cometlog "github.com/cometbft/cometbft/libs/log"
 	cometnet "github.com/cometbft/cometbft/libs/net"
 )
 
@@ -13,7 +13,7 @@ type SignerListener struct {
 	*SignerListenerEndpoint
 }
 
-func NewSignerListener(logger cometlog.Logger, address string) SignerListener {
+func NewSignerListener(logger *slog.Logger, address string) SignerListener {
 	proto, address := cometnet.ProtocolAndAddress(address)
 
 	ln, err := net.Listen(proto, address)

@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
+	"log/slog"
 
-	cometlog "github.com/cometbft/cometbft/libs/log"
 	cometos "github.com/cometbft/cometbft/libs/os"
 	"github.com/spf13/cobra"
 
@@ -30,12 +30,22 @@ func startCmd() *cobra.Command {
 			out := cmd.OutOrStdout()
 
 			logLevel, _ := cmd.Flags().GetString(flagLogLevel)
-			logLevelOpt, err := cometlog.AllowLevel(logLevel)
-			if err != nil {
-				return fmt.Errorf("failed to parse log level: %w", err)
+
+			var slogLevel slog.Leveler
+			switch logLevel {
+			case "debug":
+				slogLevel = slog.LevelDebug
+			case "info":
+				slogLevel = slog.LevelInfo
+			case "error":
+				slogLevel = slog.LevelError
+			case "warn":
+				slogLevel = slog.LevelWarn
 			}
 
-			logger := cometlog.NewFilter(cometlog.NewTMLogger(cometlog.NewSyncWriter(out)), logLevelOpt).With("module", "validator")
+			logger := slog.New(slog.NewTextHandler(out, &slog.HandlerOptions{
+				Level: slogLevel,
+			}))
 			logger.Info("Horcrux Proxy")
 
 			listenAddrs, _ := cmd.Flags().GetStringArray(flagListen)
@@ -49,6 +59,8 @@ func startCmd() *cobra.Command {
 			var hc signer.HorcruxConnection
 
 			grpcAddr, _ := cmd.Flags().GetString(flagGRPCAddress)
+
+			var err error
 
 			if grpcAddr != "" {
 				hc, err = signer.NewHorcruxGRPCClient(logger, grpcAddr)
@@ -94,13 +106,13 @@ func startCmd() *cobra.Command {
 	return cmd
 }
 
-func logIfErr(logger cometlog.Logger, fn func() error) {
+func logIfErr(logger *slog.Logger, fn func() error) {
 	if err := fn(); err != nil {
 		logger.Error("Error", "err", err)
 	}
 }
 
-func waitForSignals(logger cometlog.Logger) {
+func waitForSignals(logger *slog.Logger) {
 	done := make(chan struct{})
 	cometos.TrapSignal(logger, func() {
 		close(done)

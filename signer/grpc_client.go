@@ -3,13 +3,15 @@ package signer
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
-	cometlog "github.com/cometbft/cometbft/libs/log"
-	cometcrypto "github.com/cometbft/cometbft/proto/tendermint/crypto"
-	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
-	"github.com/strangelove-ventures/horcrux/v3/signer"
-	"github.com/strangelove-ventures/horcrux/v3/signer/proto"
+	cometprotocrypto "github.com/strangelove-ventures/horcrux/v3/comet/proto/crypto"
+	cometprotoprivval "github.com/strangelove-ventures/horcrux/v3/comet/proto/privval"
+
+	"github.com/strangelove-ventures/horcrux/v3/grpc/cosigner"
+	"github.com/strangelove-ventures/horcrux/v3/grpc/horcrux"
+	"github.com/strangelove-ventures/horcrux/v3/types"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
@@ -17,12 +19,12 @@ import (
 var _ HorcruxConnection = (*HorcruxGRPCClient)(nil)
 
 type HorcruxGRPCClient struct {
-	grpcClient proto.RemoteSignerClient
-	logger     cometlog.Logger
+	grpcClient horcrux.RemoteSignerClient
+	logger     *slog.Logger
 }
 
 func NewHorcruxGRPCClient(
-	logger cometlog.Logger,
+	logger *slog.Logger,
 	address string,
 ) (*HorcruxGRPCClient, error) {
 	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
@@ -31,7 +33,7 @@ func NewHorcruxGRPCClient(
 	}
 	return &HorcruxGRPCClient{
 		logger:     logger,
-		grpcClient: proto.NewRemoteSignerClient(conn),
+		grpcClient: horcrux.NewRemoteSignerClient(conn),
 	}, nil
 }
 
@@ -55,9 +57,9 @@ func (c *HorcruxGRPCClient) handleSignVoteRequest(req cometprotoprivval.Message)
 	voteReq := req.GetSignVoteRequest()
 	vote := voteReq.Vote
 
-	res, err := c.grpcClient.Sign(context.TODO(), &proto.SignBlockRequest{
+	res, err := c.grpcClient.Sign(context.TODO(), &cosigner.SignBlockRequest{
 		ChainID: voteReq.ChainId,
-		Block:   signer.VoteToBlock(voteReq.ChainId, vote).ToProto(),
+		Block:   types.VoteToBlock(vote).ToProto(),
 	})
 	if err == nil {
 		vote.Signature = res.Signature
@@ -82,9 +84,10 @@ func (c *HorcruxGRPCClient) handleSignVoteRequest(req cometprotoprivval.Message)
 func (c *HorcruxGRPCClient) handleSignProposalRequest(req cometprotoprivval.Message) (*cometprotoprivval.Message, error) {
 	proposalReq := req.GetSignProposalRequest()
 	proposal := proposalReq.Proposal
-	res, err := c.grpcClient.Sign(context.TODO(), &proto.SignBlockRequest{
+
+	res, err := c.grpcClient.Sign(context.TODO(), &cosigner.SignBlockRequest{
 		ChainID: proposalReq.ChainId,
-		Block:   signer.ProposalToBlock(proposalReq.ChainId, proposal).ToProto(),
+		Block:   types.ProposalToBlock(proposal).ToProto(),
 	})
 	if err == nil {
 		proposal.Signature = res.Signature
@@ -106,27 +109,32 @@ func (c *HorcruxGRPCClient) handleSignProposalRequest(req cometprotoprivval.Mess
 }
 
 func (c *HorcruxGRPCClient) handlePubKeyRequest(req cometprotoprivval.Message) (*cometprotoprivval.Message, error) {
-	res, err := c.grpcClient.PubKey(context.TODO(), &proto.PubKeyRequest{
+	res, err := c.grpcClient.PubKey(context.TODO(), &horcrux.PubKeyRequest{
 		ChainId: req.GetPubKeyRequest().ChainId,
 	})
-	if err == nil {
+	if err != nil {
 		return &cometprotoprivval.Message{
-			Sum: &cometprotoprivval.Message_PubKeyResponse{
-				PubKeyResponse: &cometprotoprivval.PubKeyResponse{
-					PubKey: cometcrypto.PublicKey{
-						Sum: &cometcrypto.PublicKey_Ed25519{
-							Ed25519: res.PubKey,
-						},
-					},
-				},
-			},
+			Sum: &cometprotoprivval.Message_PubKeyResponse{PubKeyResponse: &cometprotoprivval.PubKeyResponse{
+				Error: getRemoteSignerError(err),
+			}},
+		}, nil
+	}
+
+	var protoPubkey cometprotocrypto.PublicKey
+	if err := protoPubkey.Unmarshal(res.PubKey); err != nil {
+		return &cometprotoprivval.Message{
+			Sum: &cometprotoprivval.Message_PubKeyResponse{PubKeyResponse: &cometprotoprivval.PubKeyResponse{
+				Error: getRemoteSignerError(err),
+			}},
 		}, nil
 	}
 
 	return &cometprotoprivval.Message{
-		Sum: &cometprotoprivval.Message_PubKeyResponse{PubKeyResponse: &cometprotoprivval.PubKeyResponse{
-			Error: getRemoteSignerError(err),
-		}},
+		Sum: &cometprotoprivval.Message_PubKeyResponse{
+			PubKeyResponse: &cometprotoprivval.PubKeyResponse{
+				PubKey: protoPubkey,
+			},
+		},
 	}, nil
 }
 
