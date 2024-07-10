@@ -43,6 +43,7 @@ func NewSentryWatcher(
 	hc signer.HorcruxConnection,
 	operator bool,
 	sentries []string,
+	maxReadSize int,
 ) (*SentryWatcher, error) {
 	var clientset *kubernetes.Clientset
 	var thisNode string
@@ -79,7 +80,7 @@ func NewSentryWatcher(
 	persistentSentries := make([]*signer.ReconnRemoteSigner, len(sentries))
 	for i, sentry := range sentries {
 		dialer := net.Dialer{Timeout: 2 * time.Second}
-		persistentSentries[i] = signer.NewReconnRemoteSigner(sentry, logger, hc, dialer)
+		persistentSentries[i] = signer.NewReconnRemoteSigner(sentry, logger, hc, dialer, maxReadSize)
 	}
 
 	return &SentryWatcher{
@@ -98,7 +99,7 @@ func NewSentryWatcher(
 
 // Watch will reconcile the sentries with the kube api at a reasonable interval.
 // It must be called only once.
-func (w *SentryWatcher) Watch(ctx context.Context) {
+func (w *SentryWatcher) Watch(ctx context.Context, maxReadSize int) {
 	for _, sentry := range w.persistentSentries {
 		if err := sentry.Start(); err != nil {
 			w.log.Error("Failed to start persistent sentry", "error", err)
@@ -113,7 +114,7 @@ func (w *SentryWatcher) Watch(ctx context.Context) {
 	defer timer.Stop()
 
 	for {
-		if err := w.reconcileSentries(ctx); err != nil {
+		if err := w.reconcileSentries(ctx, maxReadSize); err != nil {
 			w.log.Error("Failed to reconcile sentries with kube api", "error", err)
 		}
 		select {
@@ -144,6 +145,7 @@ func (w *SentryWatcher) Stop() error {
 
 func (w *SentryWatcher) reconcileSentries(
 	ctx context.Context,
+	maxReadSize int,
 ) error {
 	configNodes := make([]string, 0)
 
@@ -220,7 +222,7 @@ func (w *SentryWatcher) reconcileSentries(
 
 	for _, newSentry := range newSentries {
 		dialer := net.Dialer{Timeout: 2 * time.Second}
-		s := signer.NewReconnRemoteSigner(newSentry, w.log, w.hc, dialer)
+		s := signer.NewReconnRemoteSigner(newSentry, w.log, w.hc, dialer, maxReadSize)
 
 		if err := s.Start(); err != nil {
 			return fmt.Errorf("failed to start new remote signer(s): %w", err)

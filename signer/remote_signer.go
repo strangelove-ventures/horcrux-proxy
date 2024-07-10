@@ -31,6 +31,8 @@ type ReconnRemoteSigner struct {
 	horcruxConnection HorcruxConnection
 
 	dialer net.Dialer
+
+	maxReadSize int
 }
 
 // NewReconnRemoteSigner return a ReconnRemoteSigner that will dial using the given
@@ -43,12 +45,14 @@ func NewReconnRemoteSigner(
 	logger cometlog.Logger,
 	horcruxConnection HorcruxConnection,
 	dialer net.Dialer,
+	maxReadSize int,
 ) *ReconnRemoteSigner {
 	rs := &ReconnRemoteSigner{
 		address:           address,
 		dialer:            dialer,
 		horcruxConnection: horcruxConnection,
 		privKey:           cometcryptoed25519.GenPrivKey(),
+		maxReadSize:       maxReadSize,
 	}
 
 	rs.BaseService = *cometservice.NewBaseService(logger, "RemoteSigner", rs)
@@ -113,7 +117,7 @@ func (rs *ReconnRemoteSigner) loop() {
 			return
 		}
 
-		req, err := ReadMsg(conn)
+		req, err := ReadMsg(conn, rs.maxReadSize)
 		if err != nil {
 			rs.Logger.Error("readMsg", "err", err)
 			conn.Close()
@@ -147,9 +151,11 @@ func (rs *ReconnRemoteSigner) loop() {
 }
 
 // ReadMsg reads a message from an io.Reader
-func ReadMsg(reader io.Reader) (msg cometprotoprivval.Message, err error) {
-	const maxRemoteSignerMsgSize = 1024 * 10
-	protoReader := protoio.NewDelimitedReader(reader, maxRemoteSignerMsgSize)
+func ReadMsg(reader io.Reader, maxReadSize int) (msg cometprotoprivval.Message, err error) {
+	if maxReadSize <= 0 {
+		maxReadSize = 1024 * 1024 // 1MB
+	}
+	protoReader := protoio.NewDelimitedReader(reader, maxReadSize)
 	_, err = protoReader.ReadMsg(&msg)
 	return msg, err
 }
