@@ -18,6 +18,7 @@ const (
 	flagGRPCAddress = "grpc"
 	flagOperator    = "operator"
 	flagSentry      = "sentry"
+	flagMaxReadSize = "max-read-size"
 )
 
 func startCmd() *cobra.Command {
@@ -82,13 +83,14 @@ func startCmd() *cobra.Command {
 			// if we're running in kubernetes, we can auto-discover sentries
 			operator, _ := cmd.Flags().GetBool(flagOperator)
 			sentries, _ := cmd.Flags().GetStringArray(flagSentry)
+			maxReadSize, _ := cmd.Flags().GetInt(flagMaxReadSize)
 
-			watcher, err := NewSentryWatcher(ctx, logger, all, hc, operator, sentries)
+			watcher, err := NewSentryWatcher(ctx, logger, all, hc, operator, sentries, maxReadSize)
 			if err != nil {
 				return err
 			}
 			defer logIfErr(logger, watcher.Stop)
-			go watcher.Watch(ctx)
+			go watcher.Watch(ctx, maxReadSize)
 
 			waitForSignals(logger)
 
@@ -102,6 +104,7 @@ func startCmd() *cobra.Command {
 	cmd.Flags().StringP(flagGRPCAddress, "g", "", "GRPC address for the proxy")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 	cmd.Flags().String(flagLogLevel, "info", "Set log level (debug, info, error, none)")
+	cmd.Flags().Int(flagMaxReadSize, 1024*1024, "Max read size for privval messages")
 
 	return cmd
 }
