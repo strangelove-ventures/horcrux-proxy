@@ -8,7 +8,7 @@ LD_FLAGS = -X github.com/strangelove-ventures/horcrux-proxy/cmd.Version=$(VERSIO
 LD_FLAGS += $(LDFLAGS)
 LD_FLAGS := $(strip $(LD_FLAGS))
 
-BUILD_FLAGS := -trimpath -ldflags '-s -w $(LD_FLAGS)'
+BUILD_FLAGS := -tags netgo -trimpath -ldflags '-s -w $(LD_FLAGS)'
 
 build:
 	@go build -mod readonly $(BUILD_FLAGS) -o build/ ./...
