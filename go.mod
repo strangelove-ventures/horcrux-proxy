@@ -8,10 +8,10 @@ require (
 	github.com/cometbft/cometbft v0.38.5
 	github.com/cosmos/gogoproto v1.4.12
 	github.com/spf13/cobra v1.8.0
-	github.com/strangelove-ventures/horcrux/v3 v3.2.4-0.20240110005509-64e1e6faa0e5
-	github.com/stretchr/testify v1.10.0
-	golang.org/x/sync v0.10.0
-	google.golang.org/grpc v1.68.1
+	github.com/strangelove-ventures/horcrux/v3 v3.3.1
+	github.com/stretchr/testify v1.9.0
+	golang.org/x/sync v0.7.0
+	google.golang.org/grpc v1.63.2
 	k8s.io/apimachinery v0.28.1
 	k8s.io/client-go v0.28.1
 )
@@ -61,14 +61,14 @@ require (
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
-	go.etcd.io/bbolt v1.3.11 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
-	golang.org/x/net v0.33.0 // indirect
-	golang.org/x/oauth2 v0.23.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
-	golang.org/x/term v0.27.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	go.etcd.io/bbolt v1.3.9 // indirect
+	golang.org/x/crypto v0.22.0 // indirect
+	golang.org/x/exp v0.0.0-20240416160154-fe59bbe5cc7f // indirect
+	golang.org/x/net v0.24.0 // indirect
+	golang.org/x/oauth2 v0.17.0 // indirect
+	golang.org/x/sys v0.19.0 // indirect
+	golang.org/x/term v0.19.0 // indirect
+	golang.org/x/text v0.14.0 // indirect
 	golang.org/x/time v0.3.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241021214115-324edc3d5d38 // indirect
 	google.golang.org/protobuf v1.35.2 // indirect
