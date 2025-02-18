@@ -2,16 +2,16 @@ package signer
 
 import (
 	"io"
+	"log/slog"
 	"net"
 	"time"
 
 	cometcryptoed25519 "github.com/cometbft/cometbft/crypto/ed25519"
-	cometlog "github.com/cometbft/cometbft/libs/log"
 	cometnet "github.com/cometbft/cometbft/libs/net"
 	"github.com/cometbft/cometbft/libs/protoio"
 	cometservice "github.com/cometbft/cometbft/libs/service"
 	cometp2pconn "github.com/cometbft/cometbft/p2p/conn"
-	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
+	cometprotoprivval "github.com/strangelove-ventures/horcrux/v3/comet/proto/privval"
 )
 
 const sleep = 1
@@ -24,6 +24,8 @@ type HorcruxConnection interface {
 // signature requests using its privVal.
 type ReconnRemoteSigner struct {
 	cometservice.BaseService
+
+	logger *slog.Logger
 
 	address string
 	privKey cometcryptoed25519.PrivKey
@@ -42,12 +44,13 @@ type ReconnRemoteSigner struct {
 // If the connection is broken, the ReconnRemoteSigner will attempt to reconnect.
 func NewReconnRemoteSigner(
 	address string,
-	logger cometlog.Logger,
+	logger *slog.Logger,
 	horcruxConnection HorcruxConnection,
 	dialer net.Dialer,
 	maxReadSize int,
 ) *ReconnRemoteSigner {
 	rs := &ReconnRemoteSigner{
+		logger:            logger,
 		address:           address,
 		dialer:            dialer,
 		horcruxConnection: horcruxConnection,
@@ -55,7 +58,7 @@ func NewReconnRemoteSigner(
 		maxReadSize:       maxReadSize,
 	}
 
-	rs.BaseService = *cometservice.NewBaseService(logger, "RemoteSigner", rs)
+	rs.BaseService = *cometservice.NewBaseService(nil, "RemoteSigner", rs)
 	return rs
 }
 
@@ -76,7 +79,7 @@ func (rs *ReconnRemoteSigner) loop() {
 		if !rs.IsRunning() {
 			if conn != nil {
 				if err := conn.Close(); err != nil {
-					rs.Logger.Error("Close", "err", err.Error()+"closing listener failed")
+					rs.logger.Error("Close", "err", err.Error()+"closing listener failed")
 				}
 			}
 			return
@@ -89,21 +92,21 @@ func (rs *ReconnRemoteSigner) loop() {
 			proto, address := cometnet.ProtocolAndAddress(rs.address)
 			netConn, err := rs.dialer.Dial(proto, address)
 			if err != nil {
-				rs.Logger.Error("Dialing", "err", err)
-				rs.Logger.Info("Retrying", "sleep (s)", sleep, "address", rs.address)
+				rs.logger.Error("Dialing", "err", err)
+				rs.logger.Info("Retrying", "sleep (s)", sleep, "address", rs.address)
 				time.Sleep(time.Second * time.Duration(sleep))
 				continue
 			}
 
-			rs.Logger.Info("Connected to Sentry", "address", rs.address)
+			rs.logger.Info("Connected to Sentry", "address", rs.address)
 			conn, err = cometp2pconn.MakeSecretConnection(netConn, rs.privKey)
 			if err != nil {
 				if err := netConn.Close(); err != nil {
-					rs.Logger.Error("Error closing netConn", "err", err)
+					rs.logger.Error("Error closing netConn", "err", err)
 				}
 				conn = nil
-				rs.Logger.Error("Secret Conn", "err", err)
-				rs.Logger.Info("Retrying", "sleep (s)", sleep, "address", rs.address)
+				rs.logger.Error("Secret Conn", "err", err)
+				rs.logger.Info("Retrying", "sleep (s)", sleep, "address", rs.address)
 				time.Sleep(time.Second * time.Duration(sleep))
 				continue
 			}
@@ -112,14 +115,14 @@ func (rs *ReconnRemoteSigner) loop() {
 		// since dialing can take time, we check running again
 		if !rs.IsRunning() {
 			if err := conn.Close(); err != nil {
-				rs.Logger.Error("Close", "err", err.Error()+"closing listener failed")
+				rs.logger.Error("Close", "err", err.Error()+"closing listener failed")
 			}
 			return
 		}
 
 		req, err := ReadMsg(conn, rs.maxReadSize)
 		if err != nil {
-			rs.Logger.Error("readMsg", "err", err)
+			rs.logger.Error("readMsg", "err", err)
 			conn.Close()
 			conn = nil
 			continue
@@ -128,14 +131,14 @@ func (rs *ReconnRemoteSigner) loop() {
 		// handleRequest handles request errors. We always send back a response
 		res, err := rs.horcruxConnection.SendRequest(req)
 		if err != nil {
-			rs.Logger.Error("handleRequest", "err", err)
+			rs.logger.Error("handleRequest", "err", err)
 			conn.Close()
 			conn = nil
 			continue
 		}
 
 		if res == nil {
-			rs.Logger.Error("handleRequest", "err", "nil response")
+			rs.logger.Error("handleRequest", "err", "nil response")
 			conn.Close()
 			conn = nil
 			continue
@@ -143,7 +146,7 @@ func (rs *ReconnRemoteSigner) loop() {
 
 		err = WriteMsg(conn, *res)
 		if err != nil {
-			rs.Logger.Error("writeMsg", "err", err)
+			rs.logger.Error("writeMsg", "err", err)
 			conn.Close()
 			conn = nil
 		}

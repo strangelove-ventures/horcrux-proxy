@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"os"
 	"strings"
 	"time"
 
-	cometlog "github.com/cometbft/cometbft/libs/log"
 	"github.com/strangelove-ventures/horcrux-proxy/signer"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -27,8 +27,8 @@ type SentryWatcher struct {
 	all                bool
 	client             *kubernetes.Clientset
 	hc                 signer.HorcruxConnection
+	log                *slog.Logger
 	labels             string
-	log                cometlog.Logger
 	node               string
 	operator           bool
 	persistentSentries []*signer.ReconnRemoteSigner
@@ -40,8 +40,8 @@ type SentryWatcher struct {
 
 func NewSentryWatcher(
 	ctx context.Context,
+	logger *slog.Logger,
 	labels []string,
-	logger cometlog.Logger,
 	all bool, // should we connect to sentries on all nodes, or just this node?
 	hc signer.HorcruxConnection,
 	operator bool,

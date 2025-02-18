@@ -2,19 +2,23 @@ package privval
 
 import (
 	"errors"
+	"log/slog"
 
-	cometlog "github.com/cometbft/cometbft/libs/log"
-	privvalproto "github.com/cometbft/cometbft/proto/tendermint/privval"
+	cometprotoprivval "github.com/strangelove-ventures/horcrux/v3/comet/proto/privval"
+
+	"github.com/strangelove-ventures/horcrux-proxy/signer"
 )
+
+var _ signer.HorcruxConnection = (*RemoteSignerLoadBalancer)(nil)
 
 // RemoteSignerLoadBalancer load balances incoming requests across multiple listeners.
 type RemoteSignerLoadBalancer struct {
-	logger    cometlog.Logger
+	logger    *slog.Logger
 	listeners []SignerListener
 	avail     chan SignerListener // Available listeners that are ready to accept requests.
 }
 
-func NewRemoteSignerLoadBalancer(logger cometlog.Logger, listeners []SignerListener) *RemoteSignerLoadBalancer {
+func NewRemoteSignerLoadBalancer(logger *slog.Logger, listeners []SignerListener) *RemoteSignerLoadBalancer {
 	ch := make(chan SignerListener, len(listeners))
 	for i := range listeners {
 		ch <- listeners[i]
@@ -27,7 +31,7 @@ func NewRemoteSignerLoadBalancer(logger cometlog.Logger, listeners []SignerListe
 }
 
 // SendRequest sends a request to the first available listener.
-func (lb *RemoteSignerLoadBalancer) SendRequest(request privvalproto.Message) (*privvalproto.Message, error) {
+func (lb *RemoteSignerLoadBalancer) SendRequest(request cometprotoprivval.Message) (*cometprotoprivval.Message, error) {
 	lis := <-lb.avail
 	defer func() { lb.avail <- lis }()
 
