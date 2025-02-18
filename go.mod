@@ -6,7 +6,7 @@ require (
 	github.com/cometbft/cometbft v0.38.5
 	github.com/cosmos/gogoproto v1.4.12
 	github.com/spf13/cobra v1.8.0
-	github.com/strangelove-ventures/horcrux/v3 v3.3.1-0.20250217180337-dfc800a0546f
+	github.com/strangelove-ventures/horcrux/v3 v3.3.2-0.20250218040807-4a21eef02efa
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.10.0
 	google.golang.org/grpc v1.68.1
