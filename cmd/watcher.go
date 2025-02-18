@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/strangelove-ventures/horcrux-proxy/signer"
@@ -27,6 +28,7 @@ type SentryWatcher struct {
 	client             *kubernetes.Clientset
 	hc                 signer.HorcruxConnection
 	log                *slog.Logger
+	labels             string
 	node               string
 	operator           bool
 	persistentSentries []*signer.ReconnRemoteSigner
@@ -39,6 +41,7 @@ type SentryWatcher struct {
 func NewSentryWatcher(
 	ctx context.Context,
 	logger *slog.Logger,
+	labels []string,
 	all bool, // should we connect to sentries on all nodes, or just this node?
 	hc signer.HorcruxConnection,
 	operator bool,
@@ -83,11 +86,22 @@ func NewSentryWatcher(
 		persistentSentries[i] = signer.NewReconnRemoteSigner(sentry, logger, hc, dialer, maxReadSize)
 	}
 
+	uniqueLabelMap := make(map[string]bool)
+	labels = append(labels, labelCosmosSentry)
+	finalLabels := []string{}
+	for _, label := range labels {
+		if _, exists := uniqueLabelMap[label]; !exists {
+			uniqueLabelMap[label] = true
+			finalLabels = append(finalLabels, label)
+		}
+	}
+
 	return &SentryWatcher{
 		all:                all,
 		client:             clientset,
 		done:               make(chan struct{}),
 		hc:                 hc,
+		labels:             strings.Join(finalLabels, ","),
 		log:                logger,
 		node:               thisNode,
 		operator:           operator,
@@ -150,7 +164,7 @@ func (w *SentryWatcher) reconcileSentries(
 	configNodes := make([]string, 0)
 
 	services, err := w.client.CoreV1().Services("").List(ctx, metav1.ListOptions{
-		LabelSelector: labelCosmosSentry,
+		LabelSelector: w.labels,
 	})
 
 	if err != nil {
