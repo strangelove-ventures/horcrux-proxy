@@ -129,10 +129,35 @@ func (c *HorcruxGRPCClient) handlePubKeyRequest(req cometprotoprivval.Message) (
 		}, nil
 	}
 
+	var pubKeyType string
+	var pubKeyBz []byte
+	switch s := protoPubkey.Sum.(type) {
+	case *cometprotocrypto.PublicKey_Secp256K1:
+		pubKeyBz = s.Secp256K1
+		pubKeyType = "secp256k1"
+	case *cometprotocrypto.PublicKey_Ed25519:
+		pubKeyBz = s.Ed25519
+		pubKeyType = "ed25519"
+	case *cometprotocrypto.PublicKey_Bn254:
+		pubKeyBz = s.Bn254
+		pubKeyType = "bn254"
+	case *cometprotocrypto.PublicKey_Bls12381:
+		pubKeyBz = s.Bls12381
+		pubKeyType = "bls12_381"
+	default:
+		return &cometprotoprivval.Message{
+			Sum: &cometprotoprivval.Message_PubKeyResponse{PubKeyResponse: &cometprotoprivval.PubKeyResponse{
+				Error: getRemoteSignerError(fmt.Errorf("unknown pubkey type: %T", protoPubkey.Sum)),
+			}},
+		}, nil
+	}
+
 	return &cometprotoprivval.Message{
 		Sum: &cometprotoprivval.Message_PubKeyResponse{
 			PubKeyResponse: &cometprotoprivval.PubKeyResponse{
-				PubKey: protoPubkey,
+				PubKey:      protoPubkey,
+				PubKeyBytes: pubKeyBz,
+				PubKeyType:  pubKeyType,
 			},
 		},
 	}, nil
