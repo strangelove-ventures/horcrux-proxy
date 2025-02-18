@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"strings"
 	"time"
 
 	cometlog "github.com/cometbft/cometbft/libs/log"
@@ -26,6 +27,7 @@ type SentryWatcher struct {
 	all                bool
 	client             *kubernetes.Clientset
 	hc                 signer.HorcruxConnection
+	labels             string
 	log                cometlog.Logger
 	node               string
 	operator           bool
@@ -38,6 +40,7 @@ type SentryWatcher struct {
 
 func NewSentryWatcher(
 	ctx context.Context,
+	labels []string,
 	logger cometlog.Logger,
 	all bool, // should we connect to sentries on all nodes, or just this node?
 	hc signer.HorcruxConnection,
@@ -83,11 +86,22 @@ func NewSentryWatcher(
 		persistentSentries[i] = signer.NewReconnRemoteSigner(sentry, logger, hc, dialer, maxReadSize)
 	}
 
+	uniqueLabelMap := make(map[string]bool)
+	labels = append(labels, labelCosmosSentry)
+	finalLabels := []string{}
+	for _, label := range labels {
+		if _, exists := uniqueLabelMap[label]; !exists {
+			uniqueLabelMap[label] = true
+			finalLabels = append(finalLabels, label)
+		}
+	}
+
 	return &SentryWatcher{
 		all:                all,
 		client:             clientset,
 		done:               make(chan struct{}),
 		hc:                 hc,
+		labels:             strings.Join(finalLabels, ","),
 		log:                logger,
 		node:               thisNode,
 		operator:           operator,
@@ -150,7 +164,7 @@ func (w *SentryWatcher) reconcileSentries(
 	configNodes := make([]string, 0)
 
 	services, err := w.client.CoreV1().Services("").List(ctx, metav1.ListOptions{
-		LabelSelector: labelCosmosSentry,
+		LabelSelector: w.labels,
 	})
 
 	if err != nil {

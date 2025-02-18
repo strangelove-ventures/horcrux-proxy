@@ -18,6 +18,7 @@ const (
 	flagGRPCAddress = "grpc"
 	flagOperator    = "operator"
 	flagSentry      = "sentry"
+	flagSentryLabel = "label"
 	flagMaxReadSize = "max-read-size"
 )
 
@@ -71,9 +72,10 @@ func startCmd() *cobra.Command {
 			// if we're running in kubernetes, we can auto-discover sentries
 			operator, _ := cmd.Flags().GetBool(flagOperator)
 			sentries, _ := cmd.Flags().GetStringArray(flagSentry)
+			labels, _ := cmd.Flags().GetStringArray(flagSentryLabel)
 			maxReadSize, _ := cmd.Flags().GetInt(flagMaxReadSize)
 
-			watcher, err := NewSentryWatcher(ctx, logger, all, hc, operator, sentries, maxReadSize)
+			watcher, err := NewSentryWatcher(ctx, labels, logger, all, hc, operator, sentries, maxReadSize)
 			if err != nil {
 				return err
 			}
@@ -88,6 +90,7 @@ func startCmd() *cobra.Command {
 
 	cmd.Flags().StringArrayP(flagListen, "l", nil, "Privval listen addresses for the proxy (e.g. tcp://0.0.0.0:1234)")
 	cmd.Flags().StringArrayP(flagSentry, "s", nil, "Privval connect addresses for the proxy")
+	cmd.Flags().StringArrayP(flagSentryLabel, "L", nil, "the label of the sentry to connect to")
 	cmd.Flags().BoolP(flagOperator, "o", true, "Use this when running in kubernetes with the Cosmos Operator to auto-discover sentries")
 	cmd.Flags().StringP(flagGRPCAddress, "g", "", "GRPC address for the proxy")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
