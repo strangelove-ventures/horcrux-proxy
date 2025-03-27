@@ -1,14 +1,14 @@
 package privval_test
 
 import (
-	"io"
+	"log/slog"
 	"net"
+	"os"
 	"testing"
 	"time"
 
-	"github.com/cometbft/cometbft/libs/log"
-	cometprotoprivval "github.com/cometbft/cometbft/proto/tendermint/privval"
-	cometproto "github.com/cometbft/cometbft/proto/tendermint/types"
+	cometprotoprivval "github.com/strangelove-ventures/horcrux/v3/comet/proto/privval"
+	cometproto "github.com/strangelove-ventures/horcrux/v3/comet/proto/types"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/sync/errgroup"
 
@@ -23,7 +23,9 @@ func TestLoadBalancer(t *testing.T) {
 		"tcp://127.0.0.1:37324",
 	}
 
-	logger := log.NewTMJSONLogger(io.Discard)
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}))
 
 	listeners := make([]privval.SignerListener, len(listenAddrs))
 	for i, addr := range listenAddrs {
