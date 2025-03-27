@@ -6,20 +6,23 @@ import (
 	cometlog "github.com/cometbft/cometbft/libs/log"
 	cometos "github.com/cometbft/cometbft/libs/os"
 	"github.com/spf13/cobra"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 
 	"github.com/strangelove-ventures/horcrux-proxy/privval"
 	"github.com/strangelove-ventures/horcrux-proxy/signer"
 )
 
 const (
-	flagLogLevel    = "log-level"
-	flagListen      = "listen"
-	flagAll         = "all"
-	flagGRPCAddress = "grpc"
-	flagOperator    = "operator"
-	flagSentry      = "sentry"
-	flagSentryLabel = "label"
-	flagMaxReadSize = "max-read-size"
+	flagLogLevel     = "log-level"
+	flagListen       = "listen"
+	flagAll          = "all"
+	flagGRPCAddress  = "grpc"
+	flagOperator     = "operator"
+	flagSentry       = "sentry"
+	flagSentryLabel  = "label"
+	flagMaxReadSize  = "max-read-size"
+	flagPrivvalLabel = "privval-selector"
 )
 
 func startCmd() *cobra.Command {
@@ -46,6 +49,17 @@ func startCmd() *cobra.Command {
 			listeners := make([]privval.SignerListener, len(listenAddrs))
 			for i, addr := range listenAddrs {
 				listeners[i] = privval.NewSignerListener(logger, addr)
+			}
+
+			privvalLabels, _ := cmd.Flags().GetString(flagPrivvalLabel)
+
+			var privvalLabelSelector labels.Selector
+			if privvalLabels != "" {
+				labelSelector, err := metav1.ParseToLabelSelector(privvalLabels)
+				if err != nil {
+					return fmt.Errorf("failed to parse privval label selector: %w", err)
+				}
+				privvalLabelSelector = labels.SelectorFromSet(labelSelector.MatchLabels)
 			}
 
 			var hc signer.HorcruxConnection
@@ -80,7 +94,7 @@ func startCmd() *cobra.Command {
 				return err
 			}
 			defer logIfErr(logger, watcher.Stop)
-			go watcher.Watch(ctx, maxReadSize)
+			go watcher.Watch(ctx, maxReadSize, privvalLabelSelector)
 
 			waitForSignals(logger)
 
@@ -93,6 +107,7 @@ func startCmd() *cobra.Command {
 	cmd.Flags().StringArrayP(flagSentryLabel, "L", nil, "the label of the sentry to connect to")
 	cmd.Flags().BoolP(flagOperator, "o", true, "Use this when running in kubernetes with the Cosmos Operator to auto-discover sentries")
 	cmd.Flags().StringP(flagGRPCAddress, "g", "", "GRPC address for the proxy")
+	cmd.Flags().String(flagPrivvalLabel, "", "Label selector for finding privval services")
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 	cmd.Flags().String(flagLogLevel, "info", "Set log level (debug, info, error, none)")
 	cmd.Flags().Int(flagMaxReadSize, 1024*1024, "Max read size for privval messages")

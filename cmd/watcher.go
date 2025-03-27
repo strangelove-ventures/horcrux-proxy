@@ -25,7 +25,7 @@ const (
 
 type SentryWatcher struct {
 	all                bool
-	client             *kubernetes.Clientset
+	client             kubernetes.Interface
 	hc                 signer.HorcruxConnection
 	labels             string
 	log                cometlog.Logger
@@ -113,7 +113,7 @@ func NewSentryWatcher(
 
 // Watch will reconcile the sentries with the kube api at a reasonable interval.
 // It must be called only once.
-func (w *SentryWatcher) Watch(ctx context.Context, maxReadSize int) {
+func (w *SentryWatcher) Watch(ctx context.Context, maxReadSize int, privvalLabelSelector labels.Selector) {
 	for _, sentry := range w.persistentSentries {
 		if err := sentry.Start(); err != nil {
 			w.log.Error("Failed to start persistent sentry", "error", err)
@@ -128,7 +128,7 @@ func (w *SentryWatcher) Watch(ctx context.Context, maxReadSize int) {
 	defer timer.Stop()
 
 	for {
-		if err := w.reconcileSentries(ctx, maxReadSize); err != nil {
+		if err := w.reconcileSentries(ctx, maxReadSize, privvalLabelSelector); err != nil {
 			w.log.Error("Failed to reconcile sentries with kube api", "error", err)
 		}
 		select {
@@ -160,6 +160,7 @@ func (w *SentryWatcher) Stop() error {
 func (w *SentryWatcher) reconcileSentries(
 	ctx context.Context,
 	maxReadSize int,
+	privvalLabelSelector labels.Selector,
 ) error {
 	configNodes := make([]string, 0)
 
@@ -174,6 +175,12 @@ func (w *SentryWatcher) reconcileSentries(
 	for _, s := range services.Items {
 		if len(s.Spec.Ports) != 1 || s.Spec.Ports[0].Name != "sentry-privval" {
 			continue
+		}
+
+		if privvalLabelSelector != nil {
+			if !privvalLabelSelector.Matches(labels.Set(s.Labels)) {
+				continue
+			}
 		}
 
 		set := labels.Set(s.Spec.Selector)
