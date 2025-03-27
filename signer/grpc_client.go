@@ -27,7 +27,7 @@ func NewHorcruxGRPCClient(
 	logger *slog.Logger,
 	address string,
 ) (*HorcruxGRPCClient, error) {
-	conn, err := grpc.Dial(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	conn, err := grpc.NewClient(address, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
 	}
