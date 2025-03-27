@@ -2,7 +2,6 @@ package signer
 
 import (
 	"io"
-	"log/slog"
 	"net"
 	"time"
 
@@ -12,6 +11,8 @@ import (
 	cometservice "github.com/cometbft/cometbft/libs/service"
 	cometp2pconn "github.com/cometbft/cometbft/p2p/conn"
 	cometprotoprivval "github.com/strangelove-ventures/horcrux/v3/comet/proto/privval"
+
+	log "github.com/strangelove-ventures/horcrux-proxy/log"
 )
 
 const sleep = 1
@@ -25,7 +26,7 @@ type HorcruxConnection interface {
 type ReconnRemoteSigner struct {
 	cometservice.BaseService
 
-	logger *slog.Logger
+	logger log.Logger
 
 	address string
 	privKey cometcryptoed25519.PrivKey
@@ -44,7 +45,7 @@ type ReconnRemoteSigner struct {
 // If the connection is broken, the ReconnRemoteSigner will attempt to reconnect.
 func NewReconnRemoteSigner(
 	address string,
-	logger *slog.Logger,
+	logger log.Logger,
 	horcruxConnection HorcruxConnection,
 	dialer net.Dialer,
 	maxReadSize int,

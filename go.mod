@@ -10,6 +10,7 @@ require (
 	github.com/stretchr/testify v1.10.0
 	golang.org/x/sync v0.10.0
 	google.golang.org/grpc v1.68.1
+	k8s.io/api v0.28.1
 	k8s.io/apimachinery v0.28.1
 	k8s.io/client-go v0.28.1
 )
@@ -26,6 +27,7 @@ require (
 	github.com/dgryski/go-farm v0.0.0-20200201041132-a6ae2369ad13 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/emicklei/go-restful/v3 v3.9.0 // indirect
+	github.com/evanphx/json-patch v5.6.0+incompatible // indirect
 	github.com/go-kit/log v0.2.1 // indirect
 	github.com/go-logfmt/logfmt v0.6.0 // indirect
 	github.com/go-logr/logr v1.2.4 // indirect
@@ -58,6 +60,7 @@ require (
 	github.com/pmezard/go-difflib v1.0.1-0.20181226105442-5d4384ee4fb2 // indirect
 	github.com/sasha-s/go-deadlock v0.3.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
+	github.com/stretchr/objx v0.5.2 // indirect
 	github.com/syndtr/goleveldb v1.0.1-0.20220721030215-126854af5e6d // indirect
 	go.etcd.io/bbolt v1.3.11 // indirect
 	golang.org/x/crypto v0.31.0 // indirect
@@ -73,7 +76,6 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	k8s.io/api v0.28.1 // indirect
 	k8s.io/klog/v2 v2.100.1 // indirect
 	k8s.io/kube-openapi v0.0.0-20230717233707-2695361300d9 // indirect
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2 // indirect
