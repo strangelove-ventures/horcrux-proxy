@@ -29,8 +29,9 @@ type SentryWatcher struct {
 	log                cometlog.Logger
 	node               string
 	operator           bool
-	persistentSentries []*signer.ReconnRemoteSigner
-	sentries           map[string]*signer.ReconnRemoteSigner
+	persistentSentries []*signer.ReconnRemoteSignerV2
+	sentries           map[string]*signer.ReconnRemoteSignerV2
+	protocolVersion    string
 
 	stop chan struct{}
 	done chan struct{}
@@ -44,6 +45,7 @@ func NewSentryWatcher(
 	operator bool,
 	sentries []string,
 	maxReadSize int,
+	protocolVersion string,
 ) (*SentryWatcher, error) {
 	var clientset *kubernetes.Clientset
 	var thisNode string
@@ -77,10 +79,14 @@ func NewSentryWatcher(
 		}
 	}
 
-	persistentSentries := make([]*signer.ReconnRemoteSigner, len(sentries))
+	persistentSentries := make([]*signer.ReconnRemoteSignerV2, len(sentries))
 	for i, sentry := range sentries {
 		dialer := net.Dialer{Timeout: 2 * time.Second}
-		persistentSentries[i] = signer.NewReconnRemoteSigner(sentry, logger, hc, dialer, maxReadSize)
+		rs, err := signer.NewReconnRemoteSignerV2(sentry, logger, hc, dialer, maxReadSize, protocolVersion)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create remote signer: %w", err)
+		}
+		persistentSentries[i] = rs
 	}
 
 	return &SentryWatcher{
@@ -92,14 +98,14 @@ func NewSentryWatcher(
 		node:               thisNode,
 		operator:           operator,
 		persistentSentries: persistentSentries,
-		sentries:           make(map[string]*signer.ReconnRemoteSigner),
+		sentries:           make(map[string]*signer.ReconnRemoteSignerV2),
 		stop:               make(chan struct{}),
 	}, nil
 }
 
 // Watch will reconcile the sentries with the kube api at a reasonable interval.
 // It must be called only once.
-func (w *SentryWatcher) Watch(ctx context.Context, maxReadSize int) {
+func (w *SentryWatcher) Watch(ctx context.Context, maxReadSize int, protocolVersion string) {
 	for _, sentry := range w.persistentSentries {
 		if err := sentry.Start(); err != nil {
 			w.log.Error("Failed to start persistent sentry", "error", err)
@@ -222,7 +228,10 @@ func (w *SentryWatcher) reconcileSentries(
 
 	for _, newSentry := range newSentries {
 		dialer := net.Dialer{Timeout: 2 * time.Second}
-		s := signer.NewReconnRemoteSigner(newSentry, w.log, w.hc, dialer, maxReadSize)
+		s, err := signer.NewReconnRemoteSignerV2(newSentry, w.log, w.hc, dialer, maxReadSize, w.protocolVersion)
+		if err != nil {
+			return fmt.Errorf("failed to create remote signer: %w", err)
+		}
 
 		if err := s.Start(); err != nil {
 			return fmt.Errorf("failed to start new remote signer(s): %w", err)

@@ -32,6 +32,21 @@ Additionally, horcrux-proxy will watch the kubernetes cluster for [cosmos-operat
                +
 ```
 
+## CometBFT v1.0 Support
+
+This fork includes support for CometBFT v1.0 protocol, enabling compatibility with chains that have upgraded to CometBFT v1.0 (e.g., Injective v1.16.0).
+
+### Protocol Version
+
+Use the `--protocol-version` flag to specify the protocol:
+- `legacy` (default): For CometBFT v0.38 and below
+- `v1`: For CometBFT v1.0+
+
+Example for CometBFT v1.0+ chains:
+```bash
+horcrux-proxy start --protocol-version v1 -g $HORCRUX_GRPC_ADDR
+```
+
 ## Flags
 
 - `-g`/`--grpc-addr` - address to connect to horcrux via GRPC (preferred over listen addresses since grpc allows multiplexing on a single connection)
@@ -39,6 +54,7 @@ Additionally, horcrux-proxy will watch the kubernetes cluster for [cosmos-operat
 - `-o`/`--operator` - when true (default), horcrux-proxy will assume it is running in the same kubernetes cluster as sentries deployed with the [cosmos-operator](https://github.com/strangelove-ventures/cosmos-operator). It will use the kube API to discover operator deployments of `type: Sentry` and automatically connect to them.
 - `-s`/`--sentry` - sentry(ies) to connect to persistently. If using the [cosmos-operator](https://github.com/strangelove-ventures/cosmos-operator), this is likely not necessary.
 - `-a`/`-all` - connect to all sentries regardless of node, instead of only sentries on this node
+- `--protocol-version` - Protocol version to use (`legacy` or `v1`). Default: `legacy`
 
 
 ## Quick Start

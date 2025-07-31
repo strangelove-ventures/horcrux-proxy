@@ -12,13 +12,14 @@ import (
 )
 
 const (
-	flagLogLevel    = "log-level"
-	flagListen      = "listen"
-	flagAll         = "all"
-	flagGRPCAddress = "grpc"
-	flagOperator    = "operator"
-	flagSentry      = "sentry"
-	flagMaxReadSize = "max-read-size"
+	flagLogLevel        = "log-level"
+	flagListen          = "listen"
+	flagAll             = "all"
+	flagGRPCAddress     = "grpc"
+	flagOperator        = "operator"
+	flagSentry          = "sentry"
+	flagMaxReadSize     = "max-read-size"
+	flagProtocolVersion = "protocol-version"
 )
 
 func startCmd() *cobra.Command {
@@ -72,13 +73,14 @@ func startCmd() *cobra.Command {
 			operator, _ := cmd.Flags().GetBool(flagOperator)
 			sentries, _ := cmd.Flags().GetStringArray(flagSentry)
 			maxReadSize, _ := cmd.Flags().GetInt(flagMaxReadSize)
+			protocolVersion, _ := cmd.Flags().GetString(flagProtocolVersion)
 
-			watcher, err := NewSentryWatcher(ctx, logger, all, hc, operator, sentries, maxReadSize)
+			watcher, err := NewSentryWatcher(ctx, logger, all, hc, operator, sentries, maxReadSize, protocolVersion)
 			if err != nil {
 				return err
 			}
 			defer logIfErr(logger, watcher.Stop)
-			go watcher.Watch(ctx, maxReadSize)
+			go watcher.Watch(ctx, maxReadSize, protocolVersion)
 
 			waitForSignals(logger)
 
@@ -93,6 +95,7 @@ func startCmd() *cobra.Command {
 	cmd.Flags().BoolP(flagAll, "a", false, "Connect to sentries on all nodes")
 	cmd.Flags().String(flagLogLevel, "info", "Set log level (debug, info, error, none)")
 	cmd.Flags().Int(flagMaxReadSize, 1024*1024, "Max read size for privval messages")
+	cmd.Flags().String(flagProtocolVersion, "legacy", "Protocol version to use (legacy or v1)")
 
 	return cmd
 }
