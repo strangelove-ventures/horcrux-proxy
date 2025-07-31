@@ -164,7 +164,15 @@ func (rs *ReconnRemoteSignerV2) HandleV1Connection(conn net.Conn) error {
 	// Read v1 message
 	msg, err := rs.readV1Msg(conn)
 	if err != nil {
+		if err == io.EOF {
+			return fmt.Errorf("readV1Msg: connection closed by client (EOF)")
+		}
 		return fmt.Errorf("readV1Msg: %w", err)
+	}
+
+	// Log the received message type for debugging
+	if msg != nil && msg.Sum != nil {
+		rs.Logger.Debug("Received V1 message", "type", fmt.Sprintf("%T", msg.Sum))
 	}
 
 	// Convert v1 message to legacy format and process
@@ -204,8 +212,17 @@ func (rs *ReconnRemoteSignerV2) readV1Msg(reader io.Reader) (*privval.V1Message,
 	}
 	protoReader := protoio.NewDelimitedReader(reader, rs.maxReadSize)
 	var msg privval.V1Message
-	_, err := protoReader.ReadMsg(&msg)
-	return &msg, err
+	n, err := protoReader.ReadMsg(&msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read message (bytes read: %d): %w", n, err)
+	}
+	
+	// Check if message was properly parsed
+	if msg.Sum == nil {
+		return nil, fmt.Errorf("readV1Msg: received empty v1 message (Sum is nil, bytes read: %d)", n)
+	}
+	
+	return &msg, nil
 }
 
 func (rs *ReconnRemoteSignerV2) writeV1Msg(writer io.Writer, msg *privval.V1Message) error {
@@ -215,6 +232,10 @@ func (rs *ReconnRemoteSignerV2) writeV1Msg(writer io.Writer, msg *privval.V1Mess
 }
 
 func (rs *ReconnRemoteSignerV2) ConvertV1ToLegacyRequest(v1Msg *privval.V1Message) (*cometprotoprivval.Message, error) {
+	if v1Msg == nil || v1Msg.Sum == nil {
+		return nil, fmt.Errorf("ConvertV1ToLegacyRequest: v1 message or its Sum field is nil")
+	}
+
 	var legacyMsg cometprotoprivval.Message
 
 	switch msg := v1Msg.Sum.(type) {
